@@ -1,9 +1,1 @@
-{
-  "name": "Jöppli Fleet Management",
-  "description": "Autonomous fleet and smart waste management control system for Jöppli and Zurich ERZ municipality",
-  "requestFramePermissions": [
-    "camera",
-    "geolocation"
-  ],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
+{"name":"Jöppli Fleet Management","description":"Autonomous fleet and smart waste management control system for Jöppli and Zurich ERZ municipality","requestFramePermissions":["camera","geolocation"],"majorCapabilities":["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]}
