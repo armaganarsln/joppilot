@@ -21,10 +21,10 @@ import { PlacesView } from './components/PlacesView';
 import { ChatBox } from './components/ChatBox';
 import { LoginScreen } from './components/LoginScreen';
 import { TeleoperationView } from './components/TeleoperationView';
-import { INITIAL_VEHICLES, INITIAL_REQUESTS } from './mockData';
+import { INITIAL_VEHICLES, INITIAL_REQUESTS, GLARUS_VEHICLES, GLARUS_REQUESTS } from './mockData';
 import { Vehicle, CollectionRequest, Alert } from './types';
 import { TestVehicleScreen } from './components/TestVehicleScreen';
-import { collection, onSnapshot, doc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc } from 'firebase/firestore';
 import { db, auth } from './firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { Clock, XCircle, LogOut, ShieldAlert } from 'lucide-react';
@@ -56,27 +56,50 @@ export default function App() {
         
         // Listen to operator document in real-time
         unsubscribeProfile = onSnapshot(doc(db, 'operators', user.uid), (docSnap) => {
-          if (docSnap.exists()) {
+          const emailLower = (user.email || '').toLowerCase();
+          const isArmagan = emailLower === 'armagan@joeppli.ch' || emailLower === 'armaganarsln@gmail.com';
+          const isAfra = emailLower === 'afra@joeppli.ch';
+
+          if (isArmagan || isAfra) {
+            const adminProject = isArmagan ? 'zurich' : 'glarus';
+            const adminProfile = {
+              uid: user.uid,
+              email: user.email,
+              role: 'admin',
+              status: 'approved',
+              project: adminProject,
+              createdAt: docSnap.exists() ? (docSnap.data().createdAt || new Date().toISOString()) : new Date().toISOString()
+            };
+
+            setCurrentUserProfile(adminProfile);
+            setIsAdmin(true);
+
+            // Auto-heal Firestore if the record is missing or incorrect
+            const currentDbData = docSnap.exists() ? docSnap.data() : null;
+            if (
+              !currentDbData || 
+              currentDbData.role !== 'admin' || 
+              currentDbData.status !== 'approved' || 
+              currentDbData.project !== adminProject
+            ) {
+              setDoc(doc(db, 'operators', user.uid), adminProfile, { merge: true })
+                .then(() => console.log("Admin Firestore profile successfully healed."))
+                .catch(err => console.error("Error healing admin Firestore profile:", err));
+            }
+          } else if (docSnap.exists()) {
             const profile = docSnap.data();
             setCurrentUserProfile(profile);
             setIsAdmin(profile.role === 'admin');
           } else {
             // First time Google or email user - fallback / wait for setDoc
-            const normalizedEmail = (user.email || '').toLowerCase();
-            const isArmagan = normalizedEmail === 'armagan@joeppli.ch' || normalizedEmail === 'armaganarsln@gmail.com';
-            const isAfra = normalizedEmail === 'afra@joeppli.ch';
-            
-            const role = (isArmagan || isAfra) ? 'admin' : 'operator';
-            const status = (isArmagan || isAfra) ? 'approved' : 'pending';
-            
             setCurrentUserProfile({
               uid: user.uid,
               email: user.email,
-              role,
-              status,
-              project: isArmagan ? 'zurich' : isAfra ? 'glarus' : 'zurich'
+              role: 'operator',
+              status: 'pending',
+              project: 'zurich'
             });
-            setIsAdmin(role === 'admin');
+            setIsAdmin(false);
           }
           setIsProfileLoading(false);
         }, (error) => {
@@ -104,24 +127,52 @@ export default function App() {
     };
   }, []);
 
+  // Dynamically switch vehicle, request, and alert configurations between city workspaces
   useEffect(() => {
-    // Generate initial welcome alert
-    setAlerts([
-      {
-        id: 'a0',
-        message: 'System online. JÖP-01 and JÖP-02 ready for deployment in Alt-Wiedikon.',
-        type: 'info',
-        timestamp: new Date(),
-        read: false
-      },
-      {
-        id: 'a1',
-        message: 'ASSISTANCE REQUESTED: JÖP-02 encountered unmapped obstacle.',
-        type: 'error',
-        timestamp: new Date(),
-        read: false
-      }
-    ]);
+    if (!currentUserProfile) return;
+    
+    if (currentUserProfile.project === 'glarus') {
+      setVehicles(GLARUS_VEHICLES);
+      setRequests(GLARUS_REQUESTS);
+      setAlerts([
+        {
+          id: 'a0',
+          message: 'System online. GL-01 and GL-02 ready for deployment in Glarus.',
+          type: 'info',
+          timestamp: new Date(),
+          read: false
+        },
+        {
+          id: 'a1',
+          message: 'ASSISTANCE REQUESTED: GL-02 encountered unmapped obstacle.',
+          type: 'error',
+          timestamp: new Date(),
+          read: false
+        }
+      ]);
+    } else {
+      setVehicles(INITIAL_VEHICLES);
+      setRequests(INITIAL_REQUESTS);
+      setAlerts([
+        {
+          id: 'a0',
+          message: 'System online. JÖP-01 and JÖP-02 ready for deployment in Alt-Wiedikon.',
+          type: 'info',
+          timestamp: new Date(),
+          read: false
+        },
+        {
+          id: 'a1',
+          message: 'ASSISTANCE REQUESTED: JÖP-02 encountered unmapped obstacle.',
+          type: 'error',
+          timestamp: new Date(),
+          read: false
+        }
+      ]);
+    }
+  }, [currentUserProfile?.project]);
+
+  useEffect(() => {
 
     // Simple simulation loop for vehicles moving along routes
     const tick = setInterval(() => {
@@ -485,7 +536,7 @@ export default function App() {
 
   return (
     <div className="h-screen flex font-sans text-joppli-dark selection:bg-joppli-green/20">
-      <LeftSidebar activeTab={activeTab} onTabChange={handleTabChange} />
+      <LeftSidebar activeTab={activeTab} onTabChange={handleTabChange} currentUserProfile={currentUserProfile} />
       
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-white">
         <TopBar 
@@ -523,6 +574,7 @@ export default function App() {
                       onSelectVehicle={setSelectedVehicleId} 
                       requests={requests}
                       onAssignRequest={handleAddToRoute}
+                      currentUserProfile={currentUserProfile}
                     />
                  </div>
                  
@@ -532,7 +584,7 @@ export default function App() {
           )}
 
           {activeTab === 'dashboard' && (
-             <DashboardView />
+             <DashboardView currentUserProfile={currentUserProfile} />
           )}
 
           {activeTab === 'assistance' && (

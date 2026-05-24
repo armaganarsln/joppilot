@@ -30,20 +30,40 @@ const mockRecyclingRate = [
   { name: 'Dec', rate: 65, target: 64 },
 ];
 
-const recentIncidents = [
-  { name: 'Werkhof Hagenholz', action: 'reported overloaded bio-bin', text: 'Location: Birmensdorferstrasse 140. Requesting immediate pickup.', time: '18 mins ago', type: 'collection' },
-  { name: 'JÖP-02 Operator', action: 'completed emergency glass pickup', text: 'Cleared shattered glass near Schmiede Wiedikon tram stop.', time: '2 hours ago', type: 'resolved' },
-  { name: 'Citizen Report (Züri-Wie-Neu)', action: 'flagged illegal dumping', text: 'Furniture dumped at recycling station Werd.', time: '3 hours ago', type: 'issue' },
-  { name: 'ERZ Dispatch', action: 'rerouted JÖP-02', text: 'Rerouted to cover missed cardboard collections in Sector C.', time: '1 day ago', type: 'dispatch' },
-];
+interface DashboardViewProps {
+  currentUserProfile?: any;
+}
 
-export const DashboardView: React.FC = () => {
+export const DashboardView: React.FC<DashboardViewProps> = ({ currentUserProfile }) => {
+  const isGlarus = currentUserProfile?.project === 'glarus';
+  const titleText = isGlarus ? "Glarus Operations" : "ERZ Operations";
+  const subtitleText = isGlarus ? "Municipal Waste Collection & Performance" : "Waste Collection & Recycling Performance";
+  const generalWasteName = isGlarus ? "Sackgebühr Glarus" : "Züri-Sack";
+  const recyclingTargetName = isGlarus ? "Glarus Target" : "ERZ Target";
+  const strategyTitle = isGlarus ? "Zero Waste Strategy Glarus 2030" : "Zero Waste Strategy 2030";
+  const strategyDescription = isGlarus ? "On track to reduce general waste footprint by 12% in Glarus." : "On track to reduce general waste footprint by 15% this quarter.";
+  const strategyMilestone = isGlarus ? "68%" : "74%";
+  const strategyMilestoneValue = isGlarus ? 68 : 74;
+  const operationalLogTitle = isGlarus ? "Operational Log & Glarus Reports" : "Operational Log & Züri-Wie-Neu Reports";
+
+  const recentIncidents = isGlarus ? [
+    { name: 'Werkhof Glarus', action: 'reported overloaded bio-bin', text: 'Location: Hauptstrasse 12. Requesting immediate pickup.', time: '18 mins ago', type: 'collection' },
+    { name: 'GL-02 Operator', action: 'completed emergency glass pickup', text: 'Cleared shattered glass near Glarus Landsgemeindeplatz.', time: '2 hours ago', type: 'resolved' },
+    { name: 'Citizen Report (Glarus-Safe)', action: 'flagged illegal dumping', text: 'Furniture dumped at recycling depot Ennenda.', time: '3 hours ago', type: 'issue' },
+    { name: 'Glarus Dispatch', action: 'rerouted GL-02', text: 'Rerouted to cover missed paper collections in Sector B.', time: '1 day ago', type: 'dispatch' },
+  ] : [
+    { name: 'Werkhof Hagenholz', action: 'reported overloaded bio-bin', text: 'Location: Birmensdorferstrasse 140. Requesting immediate pickup.', time: '18 mins ago', type: 'collection' },
+    { name: 'JÖP-02 Operator', action: 'completed emergency glass pickup', text: 'Cleared shattered glass near Schmiede Wiedikon tram stop.', time: '2 hours ago', type: 'resolved' },
+    { name: 'Citizen Report (Züri-Wie-Neu)', action: 'flagged illegal dumping', text: 'Furniture dumped at recycling station Werd.', time: '3 hours ago', type: 'issue' },
+    { name: 'ERZ Dispatch', action: 'rerouted JÖP-02', text: 'Rerouted to cover missed cardboard collections in Sector C.', time: '1 day ago', type: 'dispatch' },
+  ];
+
   return (
-    <div className="flex-1 overflow-y-auto p-6 bg-joppli-light">
+    <div className="flex-1 overflow-y-auto p-6 bg-joppli-light font-sans">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-joppli-dark">ERZ Operations</h1>
-          <p className="text-sm font-medium text-joppli-dark/60 mt-1">Waste Collection & Recycling Performance</p>
+          <h1 className="text-2xl font-bold text-joppli-dark uppercase tracking-wide">{titleText}</h1>
+          <p className="text-xs font-bold text-joppli-dark/50 uppercase tracking-widest mt-1">{subtitleText}</p>
         </div>
       </div>
 
@@ -102,7 +122,7 @@ export const DashboardView: React.FC = () => {
                 <Tooltip cursor={{fill: '#f4f7fb'}} contentStyle={{border: 'none', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}} />
                 <Bar dataKey="paper" stackId="a" fill="#326CB8" name="Karton/Papier" />
                 <Bar dataKey="pet" stackId="a" fill="#6DBA32" name="PET/Plastik" />
-                <Bar dataKey="general" stackId="a" fill="#2D2F3B" name="Züri-Sack" />
+                <Bar dataKey="general" stackId="a" fill="#2D2F3B" name={generalWasteName} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -128,7 +148,7 @@ export const DashboardView: React.FC = () => {
                 <YAxis axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#749eca'}} domain={['dataMin - 5', 'dataMax + 5']} width={25} />
                 <Tooltip contentStyle={{border: 'none', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}} />
                 <Area type="monotone" dataKey="rate" stroke="#6DBA32" fillOpacity={1} fill="url(#colorRate)" name="Actual Rate" strokeWidth={2} />
-                <Line type="monotone" dataKey="target" stroke="#2D2F3B" strokeDasharray="3 3" name="ERZ Target" dot={false} strokeWidth={2} />
+                <Line type="monotone" dataKey="target" stroke="#2D2F3B" strokeDasharray="3 3" name={recyclingTargetName} dot={false} strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -137,7 +157,7 @@ export const DashboardView: React.FC = () => {
         {/* Recent Incidents & Reports */}
         <div className="bg-white rounded-lg p-5 shadow-sm border border-joppli-grey/50 col-span-1 md:col-span-2 lg:col-span-2 lg:row-span-2">
           <div className="flex justify-between items-center mb-6">
-            <h3 className="text-sm font-bold text-joppli-dark/80">Operational Log & Züri-Wie-Neu Reports</h3>
+            <h3 className="text-sm font-bold text-joppli-dark/80">{operationalLogTitle}</h3>
           </div>
           <div className="space-y-6">
             {recentIncidents.map((incident, i) => (
@@ -182,21 +202,21 @@ export const DashboardView: React.FC = () => {
           </div>
         </div>
 
-        {/* ERZ Target Summary */}
+        {/* Target Summary */}
         <div className="bg-white rounded-lg p-5 shadow-sm border border-joppli-grey/50 flex flex-col justify-center items-center hover:border-joppli-blue transition-colors cursor-default relative overflow-hidden">
              <div className="absolute top-0 right-0 w-24 h-24 bg-joppli-green/5 rounded-bl-full pointer-events-none"></div>
-             <h3 className="text-sm font-bold text-joppli-dark/80 self-start mb-4">Zero Waste Strategy 2030</h3>
+             <h3 className="text-sm font-bold text-joppli-dark/80 self-start mb-4">{strategyTitle}</h3>
              <div className="w-full mt-2">
                <div className="flex justify-between text-xs font-bold mb-1">
                  <span className="text-joppli-dark">Current Milestone</span>
-                 <span className="text-joppli-green">74%</span>
+                 <span className="text-joppli-green">{strategyMilestone}</span>
                </div>
                <div className="w-full h-2 bg-joppli-grey rounded-full overflow-hidden">
-                  <div className="h-full bg-joppli-green w-[74%] rounded-full"></div>
+                  <div className="h-full bg-joppli-green rounded-full" style={{ width: `${strategyMilestoneValue}%` }}></div>
                </div>
-               <p className="text-xs text-joppli-dark/60 mt-4 text-center">On track to reduce general waste footprint by 15% this quarter.</p>
+               <p className="text-xs text-joppli-dark/60 mt-4 text-center">{strategyDescription}</p>
              </div>
-        </div>
+         </div>
       </div>
     </div>
   );

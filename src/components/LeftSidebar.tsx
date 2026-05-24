@@ -17,12 +17,20 @@ import {
 interface LeftSidebarProps {
   activeTab: string;
   onTabChange: (tab: string) => void;
+  currentUserProfile?: any;
 }
 
 export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   activeTab,
   onTabChange,
+  currentUserProfile,
 }) => {
+  const isGlarus = currentUserProfile?.project === 'glarus';
+  const logoText = isGlarus ? 'GL' : 'ERZ';
+  const headerTitle = isGlarus ? 'Jöppli x Glarus' : 'Jöppli x ERZ';
+  const headerSubtitle = isGlarus ? 'Glarus Operations' : 'Stadt Zürich';
+  const headerLogoBg = isGlarus ? 'bg-joppli-yellow text-joppli-dark' : 'bg-joppli-blue text-white';
+
   const navItems = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "dispatch", label: "Map & Dispatch", icon: Map },
@@ -57,12 +65,12 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
     <div className="w-64 bg-joppli-dark text-white flex flex-col h-full shrink-0 font-sans">
       <div className="p-4 flex items-center justify-between cursor-pointer hover:bg-white/5 transition-colors">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-joppli-blue flex items-center justify-center overflow-hidden">
-            <span className="font-black text-white text-xs">ERZ</span>
+          <div className={`w-10 h-10 rounded-full ${headerLogoBg} flex items-center justify-center overflow-hidden font-black text-xs`}>
+            {logoText}
           </div>
           <div className="flex flex-col">
-            <span className="font-bold text-sm">Jöppli x ERZ</span>
-            <span className="text-xs text-white/50">Stadt Zürich</span>
+            <span className="font-bold text-sm">{headerTitle}</span>
+            <span className="text-xs text-white/50">{headerSubtitle}</span>
           </div>
         </div>
         <ChevronDown className="w-4 h-4 text-white/50" />

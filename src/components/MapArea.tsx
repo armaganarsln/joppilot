@@ -1,8 +1,8 @@
 import React from 'react';
 import { Vehicle, CollectionRequest } from '../types';
-import { MapContainer, TileLayer, Marker, Polyline, Tooltip, CircleMarker, Popup } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Polyline, Tooltip, CircleMarker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { LOCATIONS } from '../mockData';
+import { LOCATIONS, GLARUS_LOCATIONS } from '../mockData';
 
 interface MapAreaProps {
   vehicles: Vehicle[];
@@ -10,6 +10,7 @@ interface MapAreaProps {
   onSelectVehicle: (id: string) => void;
   requests?: CollectionRequest[];
   onAssignRequest?: (reqId: string, vehicleId: string) => void;
+  currentUserProfile?: any;
 }
 
 // Custom icon using L.divIcon with rotating truck
@@ -69,15 +70,26 @@ const createTrashBinIcon = (material: string) => {
   });
 };
 
+const ChangeMapView: React.FC<{ center: [number, number] }> = ({ center }) => {
+  const map = useMap();
+  React.useEffect(() => {
+    map.setView(center, 15);
+  }, [center, map]);
+  return null;
+};
+
 export const MapArea: React.FC<MapAreaProps> = ({ 
   vehicles, 
   selectedVehicleId, 
   onSelectVehicle, 
   requests = [], 
-  onAssignRequest 
+  onAssignRequest,
+  currentUserProfile
 }) => {
-  const centerLat = 47.3712;
-  const centerLng = 8.5135; // Alt-Wiedikon area
+  const isGlarus = currentUserProfile?.project === 'glarus';
+  const centerLat = isGlarus ? 47.0406 : 47.3712;
+  const centerLng = isGlarus ? 9.0682 : 8.5135;
+  const activeLocations = isGlarus ? GLARUS_LOCATIONS : LOCATIONS;
 
   return (
     <div className="flex-1 relative overflow-hidden h-full z-0 bg-white">
@@ -102,13 +114,14 @@ export const MapArea: React.FC<MapAreaProps> = ({
         style={{ height: '100%', width: '100%', zIndex: 1 }}
         zoomControl={false}
       >
+        <ChangeMapView center={[centerLat, centerLng]} />
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
         />
 
         {/* Draw stationary locations (Depots, hubs) */}
-        {Object.values(LOCATIONS).map((loc) => {
+        {Object.values(activeLocations).map((loc) => {
           // Skip drawing pickup locations that are already represented as trash marker requests
           const isRequestLocation = requests.some(r => r.location.id === loc.id);
           if (isRequestLocation) return null;
