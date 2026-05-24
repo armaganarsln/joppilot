@@ -21,8 +21,16 @@ export const TopBar: React.FC<TopBarProps> = ({
 }) => {
   const [showAlerts, setShowAlerts] = useState(false);
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
+  const [avatarError, setAvatarError] = useState(false);
+  const [dropdownAvatarError, setDropdownAvatarError] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const alertsRef = useRef<HTMLDivElement>(null);
+
+  // Reset image errors when active user changes
+  useEffect(() => {
+    setAvatarError(false);
+    setDropdownAvatarError(false);
+  }, [currentUser]);
 
   // Close dropdowns on click outside
   useEffect(() => {
@@ -139,10 +147,11 @@ export const TopBar: React.FC<TopBarProps> = ({
             className="flex items-center gap-3.5 pl-2.5 pr-1.5 py-1.5 rounded-2xl hover:bg-joppli-light transition-all cursor-pointer text-left border border-transparent hover:border-joppli-grey/60"
           >
             {/* User Profile Avatar */}
-            {photoURL ? (
+            {photoURL && !avatarError ? (
               <img 
                 src={photoURL} 
                 alt={displayName} 
+                onError={() => setAvatarError(true)}
                 className="w-8 h-8 rounded-full border border-joppli-grey/50 shadow-sm shrink-0 object-cover" 
               />
             ) : (
@@ -170,8 +179,13 @@ export const TopBar: React.FC<TopBarProps> = ({
             <div className="absolute right-0 top-[60px] w-72 bg-white border border-joppli-grey rounded-2xl shadow-xl shadow-joppli-dark/5 overflow-hidden z-[100] p-4 text-joppli-dark">
               {/* Header */}
               <div className="flex items-center gap-3 pb-3 border-b border-joppli-grey/60 mb-3">
-                {photoURL ? (
-                  <img src={photoURL} alt={displayName} className="w-11 h-11 rounded-full border border-joppli-grey" />
+                {photoURL && !dropdownAvatarError ? (
+                  <img 
+                    src={photoURL} 
+                    alt={displayName} 
+                    onError={() => setDropdownAvatarError(true)}
+                    className="w-11 h-11 rounded-full border border-joppli-grey object-cover" 
+                  />
                 ) : (
                   <div className="w-11 h-11 rounded-full bg-joppli-dark text-white flex items-center justify-center font-bold text-sm">
                     {initials}

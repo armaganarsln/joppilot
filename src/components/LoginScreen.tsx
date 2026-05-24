@@ -54,6 +54,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onEnterTestVe
         message = "Passcode is too weak. Please use at least 6 characters.";
       } else if (error.code === 'auth/invalid-email') {
         message = "Please enter a valid operator email address.";
+      } else if (error.code === 'auth/operation-not-allowed') {
+        message = "Email/Password sign-in is currently disabled in your Firebase Console. Please go to Authentication > Sign-in method to enable it!";
       }
       setErrorMsg(message);
     } finally {
