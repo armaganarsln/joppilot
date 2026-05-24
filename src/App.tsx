@@ -93,6 +93,10 @@ export default function App() {
                 lng: updated.location.lng + (dx / dist) * speed,
                 lat: updated.location.lat + (dy / dist) * speed,
               };
+              // Calculate bearing/heading in degrees (normalized for CSS rotate where East/Right is 0)
+              const angleRad = Math.atan2(dy, dx);
+              const angleDeg = angleRad * (180 / Math.PI);
+              updated.heading = -angleDeg;
             }
           }
           
@@ -128,23 +132,82 @@ export default function App() {
     return () => clearInterval(tick);
   }, []);
 
-  const handleAddToRoute = (reqId: string, vehicleId: string) => {
+  const fetchOSRMRoute = async (start: { lat: number; lng: number }, end: { lat: number; lng: number }) => {
+    try {
+      const url = `https://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`;
+      const response = await fetch(url);
+      const data = await response.json();
+      if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
+        const coordinates = data.routes[0].geometry.coordinates;
+        return coordinates.map((coord: [number, number], index: number) => ({
+          id: `osrm_${Date.now()}_${index}`,
+          lat: coord[1],
+          lng: coord[0],
+          label: index === coordinates.length - 1 ? 'Destination' : `Waypoint ${index}`
+        }));
+      }
+    } catch (e) {
+      console.warn("OSRM routing failed, falling back to straight line:", e);
+    }
+    return [
+      {
+        id: `direct_${Date.now()}`,
+        lat: end.lat,
+        lng: end.lng,
+        label: 'Destination'
+      }
+    ];
+  };
+
+  const handleAddToRoute = async (reqId: string, vehicleId: string) => {
     const req = requests.find(r => r.id === reqId);
     if (!req) return;
+
+    // Remove task from pending list and set view to fleet immediately
+    setRequests(prev => prev.filter(r => r.id !== reqId));
+    setListMode('vehicles');
+
+    const vehicle = vehicles.find(v => v.id === vehicleId);
+    if (!vehicle) return;
+
+    const startLoc = vehicle.route.length > 0 ? vehicle.route[vehicle.route.length - 1] : vehicle.location;
+    
+    // Add calculating alert
+    setAlerts(prev => [
+      {
+        id: `calc_${vehicleId}_${Date.now()}`,
+        message: `Calculating street-accurate route for ${vehicle.name}...`,
+        type: 'info',
+        timestamp: new Date(),
+        read: false
+      },
+      ...prev
+    ]);
+
+    const streetPath = await fetchOSRMRoute(startLoc, req.location);
 
     setVehicles(prev => prev.map(v => {
       if (v.id === vehicleId) {
         return {
           ...v,
           status: 'on_route',
-          route: [...v.route, req.location]
+          route: [...v.route, ...streetPath]
         };
       }
       return v;
     }));
 
-    setRequests(prev => prev.filter(r => r.id !== reqId));
-    setListMode('vehicles');
+    // Update alert when route is ready
+    setAlerts(prev => [
+      {
+        id: `route_${vehicleId}_${Date.now()}`,
+        message: `Route calculated: ${vehicle.name} is navigating Alt-Wiedikon streets via OpenStreetMap.`,
+        type: 'info',
+        timestamp: new Date(),
+        read: false
+      },
+      ...prev
+    ]);
   };
 
   const handleSendMessage = async (msg: string) => {
@@ -252,11 +315,13 @@ export default function App() {
               
               <div className="flex-1 relative flex flex-col min-w-0 bg-joppli-light shadow-inner shadow-joppli-grey/50">
                  <div className="flex-1 relative overflow-hidden">
-                   <MapArea 
-                     vehicles={vehicles} 
-                     selectedVehicleId={selectedVehicleId} 
-                     onSelectVehicle={setSelectedVehicleId} 
-                   />
+                    <MapArea 
+                      vehicles={vehicles} 
+                      selectedVehicleId={selectedVehicleId} 
+                      onSelectVehicle={setSelectedVehicleId} 
+                      requests={requests}
+                      onAssignRequest={handleAddToRoute}
+                    />
                  </div>
                  
                  <ChatBox onSendMessage={handleSendMessage} />
