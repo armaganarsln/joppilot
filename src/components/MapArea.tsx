@@ -74,7 +74,7 @@ const ChangeMapView: React.FC<{ center: [number, number] }> = ({ center }) => {
   const map = useMap();
   React.useEffect(() => {
     map.setView(center, 15);
-  }, [center, map]);
+  }, [center[0], center[1], map]);
   return null;
 };
 

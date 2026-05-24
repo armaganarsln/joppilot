@@ -61,8 +61,45 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onEnterTestVe
             onLogin();
           }, 1000);
         } else {
+          // Trigger email to admin via Firestore 'mail' collection
+          const adminEmails = project === 'zurich' 
+            ? ['armagan@joeppli.ch', 'armaganarsln@gmail.com'] 
+            : ['afra@joeppli.ch'];
+            
+          const projectLabel = project === 'zurich' ? 'Zürich (ERZ)' : 'Glarus';
+          
+          await setDoc(doc(db, 'mail', `reg_${user.uid}`), {
+            to: adminEmails,
+            message: {
+              subject: `[Jöppilot] New Operator Pending Approval: ${user.email}`,
+              text: `Hello Admin,\n\nA new operator (${user.email}) has registered for the ${projectLabel} workspace and is awaiting your authorization.\n\nPlease log in to the Jöppilot Portal and navigate to Contacts & Users > Approval Queue to approve or decline this request.\n\nBest regards,\nJöppli Fleet Management System`,
+              html: `
+                <div style="font-family: sans-serif; padding: 20px; color: #2D2F3B;">
+                  <h2 style="color: #326CB8; text-transform: uppercase;">Municipal Workspace Access Request</h2>
+                  <p>A new operator has registered and is awaiting municipal administrator review:</p>
+                  <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+                    <tr style="background-color: #F8F9FA;">
+                      <td style="padding: 10px; font-weight: bold; border: 1px solid #EDEDED;">Operator ID/Email</td>
+                      <td style="padding: 10px; border: 1px solid #EDEDED;">${user.email}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 10px; font-weight: bold; border: 1px solid #EDEDED;">Workspace City</td>
+                      <td style="padding: 10px; border: 1px solid #EDEDED; text-transform: uppercase; font-weight: bold; color: #326CB8;">${projectLabel}</td>
+                    </tr>
+                    <tr style="background-color: #F8F9FA;">
+                      <td style="padding: 10px; font-weight: bold; border: 1px solid #EDEDED;">Status</td>
+                      <td style="padding: 10px; border: 1px solid #EDEDED; color: #FFCB00; font-weight: bold; text-transform: uppercase;">Awaiting Approval</td>
+                    </tr>
+                  </table>
+                  <p>Please log in to your Jöppilot portal, navigate to the <b>Contacts & Users</b> console, and open the <b>Approval Queue</b> tab to authorize or reject this registration.</p>
+                  <hr style="border: 0; border-top: 1px solid #EDEDED; margin: 20px 0;" />
+                  <p style="font-size: 11px; color: #888;">Jöppli Smart Fleet Management Terminal</p>
+                </div>
+              `
+            }
+          });
+
           setSuccessMsg("Registration recorded successfully! Awaiting administrator approval.");
-          // Allow the onAuthStateChanged listener in App.tsx to catch the pending state!
         }
       } else if (mode === 'forgot') {
         await sendPasswordResetEmail(auth, email);
@@ -118,6 +155,46 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onEnterTestVe
           project,
           createdAt: new Date().toISOString()
         });
+
+        if (status === 'pending') {
+          // Trigger email to admin via Firestore 'mail' collection
+          const adminEmails = project === 'zurich' 
+            ? ['armagan@joeppli.ch', 'armaganarsln@gmail.com'] 
+            : ['afra@joeppli.ch'];
+            
+          const projectLabel = project === 'zurich' ? 'Zürich (ERZ)' : 'Glarus';
+          
+          await setDoc(doc(db, 'mail', `reg_${user.uid}`), {
+            to: adminEmails,
+            message: {
+              subject: `[Jöppilot] New Google Operator Pending Approval: ${user.email}`,
+              text: `Hello Admin,\n\nA new operator (${user.email}) has signed in via Google for the ${projectLabel} workspace and is awaiting your authorization.\n\nPlease log in to the Jöppilot Portal and navigate to Contacts & Users > Approval Queue to approve or decline this request.\n\nBest regards,\nJöppli Fleet Management System`,
+              html: `
+                <div style="font-family: sans-serif; padding: 20px; color: #2D2F3B;">
+                  <h2 style="color: #326CB8; text-transform: uppercase;">Google Operator Registration Request</h2>
+                  <p>A new operator has signed in with Google and is awaiting municipal administrator review:</p>
+                  <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+                    <tr style="background-color: #F8F9FA;">
+                      <td style="padding: 10px; font-weight: bold; border: 1px solid #EDEDED;">Operator ID/Email</td>
+                      <td style="padding: 10px; border: 1px solid #EDEDED;">${user.email}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 10px; font-weight: bold; border: 1px solid #EDEDED;">Workspace City</td>
+                      <td style="padding: 10px; border: 1px solid #EDEDED; text-transform: uppercase; font-weight: bold; color: #326CB8;">${projectLabel}</td>
+                    </tr>
+                    <tr style="background-color: #F8F9FA;">
+                      <td style="padding: 10px; font-weight: bold; border: 1px solid #EDEDED;">Provider</td>
+                      <td style="padding: 10px; border: 1px solid #EDEDED; color: #4285F4; font-weight: bold;">Google Authentication</td>
+                    </tr>
+                  </table>
+                  <p>Please log in to your Jöppilot portal, navigate to the <b>Contacts & Users</b> console, and open the <b>Approval Queue</b> tab to authorize or reject this registration.</p>
+                  <hr style="border: 0; border-top: 1px solid #EDEDED; margin: 20px 0;" />
+                  <p style="font-size: 11px; color: #888;">Jöppli Smart Fleet Management Terminal</p>
+                </div>
+              `
+            }
+          });
+        }
       }
       onLogin();
     } catch (error: any) {
