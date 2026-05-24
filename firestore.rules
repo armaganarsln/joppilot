@@ -1,0 +1,60 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Default Deny Catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Path Variable & ID Hardening
+    function isValidId(id) { 
+      return id is string && id.size() <= 128 && id.blacklisted_characters == null && id.matches('^[a-zA-Z0-9_\\-]+$'); 
+    }
+    
+    function incoming() { 
+      return request.resource.data; 
+    }
+    
+    function existing() { 
+      return resource.data; 
+    }
+
+    // Schema Validation for TestVehicle
+    function isValidTestVehicle(data) {
+      return data.id is string
+        && data.id.size() <= 128
+        && data.name is string
+        && data.name.size() <= 64
+        && data.isActive is bool
+        && data.avState is string
+        && data.lat is number
+        && data.lng is number
+        && data.speed is number
+        && data.heading is number
+        && data.battery is number
+        && data.updatedAt is number;
+    }
+
+    // Schema Validation for WebRTCSignaling
+    function isValidWebRTCSignaling(data) {
+      return data.id is string
+        && data.id.size() <= 128
+        && data.updatedAt is number;
+    }
+
+    match /test_vehicles/{vehicleId} {
+      allow get, list: if true;
+      allow create, update: if isValidId(vehicleId) 
+        && isValidTestVehicle(incoming());
+      allow delete: if isValidId(vehicleId);
+    }
+
+    match /webrtc_signaling/{vehicleId} {
+      allow get, list: if true;
+      allow create, update: if isValidId(vehicleId)
+        && isValidWebRTCSignaling(incoming());
+      allow delete: if isValidId(vehicleId);
+    }
+  }
+}

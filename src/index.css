@@ -1,0 +1,19 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;900&display=swap');
+@import "tailwindcss";
+@import "leaflet/dist/leaflet.css";
+
+@theme {
+  --color-joppli-green: #6DBA32;
+  --color-joppli-blue: #326CB8;
+  --color-joppli-yellow: #FFCB00;
+  --color-joppli-red: #F55045;
+  --color-joppli-dark: #2D2F3B;
+  --color-joppli-grey: #EDEDED;
+  --color-joppli-light: #F8F9FA;
+  
+  --font-sans: "Poppins", ui-sans-serif, system-ui, sans-serif;
+}
+
+body {
+  @apply font-sans bg-joppli-light overflow-hidden text-joppli-dark;
+}

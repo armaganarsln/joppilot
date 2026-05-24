@@ -1,0 +1,51 @@
+{
+  "entities": {
+    "TestVehicle": {
+      "title": "TestVehicle",
+      "description": "Active test vehicle or phone simulator state",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "avState": { "type": "string" },
+        "lat": { "type": "number" },
+        "lng": { "type": "number" },
+        "speed": { "type": "number" },
+        "heading": { "type": "number" },
+        "battery": { "type": "number" },
+        "assistanceCause": { "type": "string" },
+        "operatorCommand": { "type": "string" },
+        "operatorCommandTimestamp": { "type": "number" },
+        "steeringAngle": { "type": "number" },
+        "throttle": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["id", "name", "isActive", "avState", "lat", "lng", "speed", "heading", "battery", "updatedAt"]
+    },
+    "WebRTCSignaling": {
+      "title": "WebRTCSignaling",
+      "description": "JSON-serialized peer connection SDP offer/answer and ICE candidates for remote teleoperation",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "offer": { "type": "string" },
+        "answer": { "type": "string" },
+        "candidates_vehicle": { "type": "string" },
+        "candidates_operator": { "type": "string" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["id", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/test_vehicles/{vehicleId}": {
+      "schema": "TestVehicle",
+      "description": "Active mobile simulator status, state, coordinates, speed, battery and orientation telemetry"
+    },
+    "/webrtc_signaling/{vehicleId}": {
+      "schema": "WebRTCSignaling",
+      "description": "WebRTC signaling document representing ongoing offer/answer exchanges and candidates"
+    }
+  }
+}
