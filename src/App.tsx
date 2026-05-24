@@ -25,10 +25,13 @@ import { INITIAL_VEHICLES, INITIAL_REQUESTS } from './mockData';
 import { Vehicle, CollectionRequest, Alert } from './types';
 import { TestVehicleScreen } from './components/TestVehicleScreen';
 import { collection, onSnapshot } from 'firebase/firestore';
-import { db } from './firebase';
+import { db, auth } from './firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [activeVehicleDetailId, setActiveVehicleDetailId] = useState<string | null>(null);
   const [teleopVehicleId, setTeleopVehicleId] = useState<string | null>(null);
@@ -37,6 +40,29 @@ export default function App() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
   const [listMode, setListMode] = useState<'vehicles' | 'tasks'>('vehicles');
+
+  // Real-time Firebase Authentication listener
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setCurrentUser(user);
+        setIsAuthenticated(true);
+        // Admin privilege check
+        const userEmail = user.email || '';
+        const authorizedAdmins = ['armagan@joeppli.ch', 'armaganarsln@gmail.com'];
+        if (authorizedAdmins.includes(userEmail.toLowerCase())) {
+          setIsAdmin(true);
+        } else {
+          setIsAdmin(false);
+        }
+      } else {
+        setCurrentUser(null);
+        setIsAuthenticated(false);
+        setIsAdmin(false);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
     // Generate initial welcome alert
@@ -295,7 +321,11 @@ export default function App() {
           alerts={alerts} 
           vehicles={vehicles}
           requests={requests}
-          onLogout={() => setIsAuthenticated(false)}
+          currentUser={currentUser}
+          isAdmin={isAdmin}
+          onLogout={async () => {
+            await auth.signOut();
+          }}
           onClearAlerts={() => setAlerts(prev => prev.map(a => ({ ...a, read: true })))}
         />
         
