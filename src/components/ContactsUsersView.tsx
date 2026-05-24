@@ -1,5 +1,19 @@
-import React, { useState } from 'react';
-import { Users, Mail, Shield, ShieldCheck, Activity, Search } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { 
+  Users, 
+  Mail, 
+  Shield, 
+  ShieldCheck, 
+  Activity, 
+  Search, 
+  Check, 
+  X, 
+  Clock, 
+  ShieldAlert, 
+  UserPlus 
+} from 'lucide-react';
+import { db } from '../firebase';
+import { collection, query, where, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 
 interface Contact {
   name: string;
@@ -9,9 +23,61 @@ interface Contact {
   lastActive: string;
 }
 
-export const ContactsUsersView: React.FC = () => {
-  const [activeSubTab, setActiveSubTab] = useState<'operators' | 'safety' | 'erz' | 'hardware'>('operators');
+interface ContactsUsersViewProps {
+  currentUserProfile?: any;
+}
+
+export const ContactsUsersView: React.FC<ContactsUsersViewProps> = ({ currentUserProfile }) => {
+  const [activeSubTab, setActiveSubTab] = useState<'operators' | 'safety' | 'erz' | 'hardware' | 'approval_queue'>('operators');
   const [searchTerm, setSearchTerm] = useState('');
+  const [pendingOperators, setPendingOperators] = useState<any[]>([]);
+  const [loadingPending, setLoadingPending] = useState(false);
+
+  // Sync real-time pending operators for the admin's project
+  useEffect(() => {
+    if (currentUserProfile?.role !== 'admin') return;
+
+    setLoadingPending(true);
+    const q = query(
+      collection(db, 'operators'),
+      where('status', '==', 'pending'),
+      where('project', '==', currentUserProfile.project)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const ops: any[] = [];
+      snapshot.forEach(docSnap => {
+        ops.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      setPendingOperators(ops);
+      setLoadingPending(false);
+    }, (error) => {
+      console.error("Error listening to pending operators:", error);
+      setLoadingPending(false);
+    });
+
+    return () => unsubscribe();
+  }, [currentUserProfile]);
+
+  const handleApprove = async (opId: string) => {
+    try {
+      await updateDoc(doc(db, 'operators', opId), {
+        status: 'approved'
+      });
+    } catch (error) {
+      console.error("Error approving operator:", error);
+    }
+  };
+
+  const handleReject = async (opId: string) => {
+    try {
+      await updateDoc(doc(db, 'operators', opId), {
+        status: 'rejected'
+      });
+    } catch (error) {
+      console.error("Error rejecting operator:", error);
+    }
+  };
 
   const contactsData: Record<'operators' | 'safety' | 'erz' | 'hardware', Contact[]> = {
     operators: [
@@ -33,11 +99,19 @@ export const ContactsUsersView: React.FC = () => {
     ]
   };
 
-  const filteredContacts = contactsData[activeSubTab].filter(c =>
-    c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.role.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.email.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredContacts = activeSubTab !== 'approval_queue' 
+    ? contactsData[activeSubTab].filter(c =>
+        c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        c.role.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        c.email.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+    : [];
+
+  const filteredPending = pendingOperators.filter(op =>
+    op.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const activeProjectLabel = currentUserProfile?.project === 'zurich' ? 'Zürich (ERZ)' : 'Glarus';
 
   return (
     <div className="flex-1 overflow-y-auto p-6 bg-joppli-light font-sans flex flex-col items-center">
@@ -61,7 +135,8 @@ export const ContactsUsersView: React.FC = () => {
               { id: 'operators', label: 'Fleet Operators' },
               { id: 'safety', label: 'Safety Backup Drivers' },
               { id: 'erz', label: 'ERZ Partners' },
-              { id: 'hardware', label: 'Hardware Partners' }
+              { id: 'hardware', label: 'Hardware Partners' },
+              ...(currentUserProfile?.role === 'admin' ? [{ id: 'approval_queue', label: `Approval Queue (${pendingOperators.length})` }] : [])
             ].map(tab => (
               <button
                 key={tab.id}
@@ -85,64 +160,167 @@ export const ContactsUsersView: React.FC = () => {
             <Search className="w-4 h-4 text-joppli-dark/40 absolute left-3.5 top-1/2 transform -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Filter names or emails..."
+              placeholder={activeSubTab === 'approval_queue' ? "Filter applicants..." : "Filter names or emails..."}
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
-              className="w-full bg-white text-xs border border-joppli-grey rounded-xl pl-9 pr-4 py-2.5 focus:outline-none focus:border-joppli-blue text-joppli-dark uppercase placeholder:low-case search-cancel:hidden"
+              className="w-full bg-white text-xs border border-joppli-grey rounded-xl pl-9 pr-4 py-2.5 focus:outline-none focus:border-joppli-blue text-joppli-dark uppercase placeholder:low-case"
             />
           </div>
         </div>
 
-        {/* Contacts Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {filteredContacts.map(contact => (
-            <div key={contact.email} className="bg-white border border-joppli-grey rounded-xl shadow-sm hover:shadow transition-shadow p-5 flex items-start gap-4">
-              
-              {/* Profile placeholder avatar */}
-              <div className="w-12 h-12 rounded-full bg-joppli-blue/10 flex items-center justify-center font-black text-joppli-blue text-sm shrink-0 uppercase tracking-tighter">
-                {contact.name.split(' ').map(n => n[0]).join('')}
+        {/* Approval Queue tab */}
+        {activeSubTab === 'approval_queue' && (
+          <div className="space-y-4">
+            <div className="bg-joppli-blue/5 border border-joppli-blue/20 rounded-2xl p-4 flex items-start gap-3 mb-2">
+              <Shield className="w-5 h-5 text-joppli-blue shrink-0 mt-0.5" />
+              <div>
+                <h4 className="text-xs font-black uppercase tracking-wider text-joppli-blue">
+                  {activeProjectLabel} Operator Authorization Loop
+                </h4>
+                <p className="text-[11px] text-joppli-dark/70 font-semibold leading-relaxed mt-0.5">
+                  As the designated administrator for the <span className="text-joppli-blue font-black uppercase">{currentUserProfile?.project}</span> workspace, you hold sole authorization to approve or reject pending access requests. Approved operators can immediately enter the active terminal.
+                </p>
               </div>
+            </div>
 
-              {/* Info details */}
-              <div className="flex-1 min-w-0">
-                <div className="flex justify-between items-start">
-                  <h3 className="font-extrabold text-sm text-joppli-dark truncate uppercase tracking-wide">
-                    {contact.name}
-                  </h3>
-                  <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border shrink-0 ${
-                    contact.permissions === 'System Admin' ? 'bg-joppli-red/10 text-joppli-red border-joppli-red/20' :
-                    contact.permissions === 'Fleet Controller' ? 'bg-joppli-blue/10 text-joppli-blue border-joppli-blue/20' :
-                    'bg-joppli-dark/10 text-joppli-dark/60 border-joppli-dark/20'
-                  }`}>
-                    {contact.permissions}
-                  </span>
-                </div>
-
-                <div className="text-xs font-semibold text-joppli-dark/60 mt-0.5 uppercase tracking-wider">
-                  {contact.role}
-                </div>
-
-                <div className="flex items-center gap-1.5 text-[11px] text-joppli-dark/50 mt-3 font-medium">
-                  <Mail className="w-3.5 h-3.5 text-joppli-dark/40 shrink-0" />
-                  <span className="truncate select-all lowercase">{contact.email}</span>
-                </div>
-
-                <div className="flex items-center gap-1.5 text-[10px] text-joppli-dark/40 mt-1 font-bold uppercase tracking-wider">
-                  <ShieldCheck className="w-3.5 h-3.5 text-joppli-green shrink-0" />
-                  <span>Last seen: {contact.lastActive}</span>
-                </div>
+            {loadingPending && (
+              <div className="py-12 flex flex-col items-center justify-center text-joppli-dark/40">
+                <div className="w-8 h-8 border-2 border-joppli-blue/20 border-t-joppli-blue rounded-full animate-spin mb-3"></div>
+                <span className="text-xs font-bold uppercase tracking-widest">Syncing queue in real-time...</span>
               </div>
+            )}
 
-            </div>
-          ))}
+            {!loadingPending && filteredPending.length === 0 && (
+              <div className="py-16 flex flex-col items-center justify-center text-joppli-dark/40 border border-dashed border-joppli-grey rounded-2xl bg-white/40">
+                <div className="w-12 h-12 rounded-full bg-joppli-green/10 flex items-center justify-center text-joppli-green mb-3">
+                  <ShieldCheck className="w-6 h-6 animate-pulse" />
+                </div>
+                <span className="text-sm font-extrabold uppercase tracking-widest text-joppli-dark/70">
+                  Zero Outstanding Access Requests
+                </span>
+                <p className="text-xs text-joppli-dark/45 uppercase tracking-wider font-bold mt-1">
+                  All applicant requests for {activeProjectLabel} are fully resolved.
+                </p>
+              </div>
+            )}
 
-          {filteredContacts.length === 0 && (
-            <div className="col-span-1 md:col-span-2 py-12 flex flex-col items-center justify-center text-joppli-dark/40 border border-dashed border-joppli-grey rounded-xl bg-white/40">
-              <Users className="w-8 h-8 mb-2 opacity-50 text-joppli-dark/30" />
-              <span className="text-sm font-bold uppercase tracking-widest">No profiles found matching search</span>
-            </div>
-          )}
-        </div>
+            {!loadingPending && filteredPending.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-fadeIn">
+                {filteredPending.map(op => {
+                  const registeredDate = op.createdAt ? new Date(op.createdAt).toLocaleDateString() : 'Recent';
+                  const initials = op.email ? op.email.split('@')[0].slice(0, 2).toUpperCase() : 'OP';
+                  
+                  return (
+                    <div key={op.id} className="bg-white border border-joppli-grey rounded-2xl shadow-sm hover:shadow-md transition-all p-5 flex flex-col justify-between gap-4 relative overflow-hidden">
+                      {/* Pulse Indicator */}
+                      <span className="absolute top-4 right-4 flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-joppli-yellow opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-joppli-yellow"></span>
+                      </span>
+
+                      <div className="flex items-start gap-4">
+                        <div className="w-12 h-12 rounded-full bg-joppli-yellow/15 border border-joppli-yellow/20 flex items-center justify-center font-black text-joppli-yellow text-sm shrink-0 uppercase">
+                          {initials}
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-extrabold text-sm text-joppli-dark truncate lowercase">
+                            {op.email}
+                          </h3>
+                          <div className="flex items-center gap-1.5 mt-1">
+                            <span className="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border bg-joppli-yellow/10 text-joppli-yellow border-joppli-yellow/25">
+                              Pending Review
+                            </span>
+                            <span className="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border bg-joppli-blue/10 text-joppli-blue border-joppli-blue/25">
+                              Operator
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 text-[10px] text-joppli-dark/50 mt-3 font-semibold uppercase tracking-wider">
+                            <Clock className="w-3.5 h-3.5 text-joppli-dark/40" />
+                            <span>Registered: {registeredDate}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Approval Actions Bar */}
+                      <div className="grid grid-cols-2 gap-2 pt-3 border-t border-joppli-grey/50">
+                        <button
+                          onClick={() => handleReject(op.id)}
+                          className="flex items-center justify-center gap-1.5 py-2 px-3 border border-joppli-grey bg-white hover:bg-joppli-red/5 hover:text-joppli-red hover:border-joppli-red/20 text-joppli-dark/75 rounded-xl text-xs font-bold uppercase tracking-widest transition-all cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                          Decline
+                        </button>
+                        
+                        <button
+                          onClick={() => handleApprove(op.id)}
+                          className="flex items-center justify-center gap-1.5 py-2 px-3 border border-transparent bg-joppli-dark hover:bg-joppli-green text-white rounded-xl text-xs font-bold uppercase tracking-widest transition-all cursor-pointer"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          Approve
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Regular tabs */}
+        {activeSubTab !== 'approval_queue' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {filteredContacts.map(contact => (
+              <div key={contact.email} className="bg-white border border-joppli-grey rounded-xl shadow-sm hover:shadow transition-shadow p-5 flex items-start gap-4">
+                
+                {/* Profile placeholder avatar */}
+                <div className="w-12 h-12 rounded-full bg-joppli-blue/10 flex items-center justify-center font-black text-joppli-blue text-sm shrink-0 uppercase tracking-tighter">
+                  {contact.name.split(' ').map(n => n[0]).join('')}
+                </div>
+
+                {/* Info details */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex justify-between items-start">
+                    <h3 className="font-extrabold text-sm text-joppli-dark truncate uppercase tracking-wide">
+                      {contact.name}
+                    </h3>
+                    <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border shrink-0 ${
+                      contact.permissions === 'System Admin' ? 'bg-joppli-red/10 text-joppli-red border-joppli-red/20' :
+                      contact.permissions === 'Fleet Controller' ? 'bg-joppli-blue/10 text-joppli-blue border-joppli-blue/20' :
+                      'bg-joppli-dark/10 text-joppli-dark/60 border-joppli-dark/20'
+                    }`}>
+                      {contact.permissions}
+                    </span>
+                  </div>
+
+                  <div className="text-xs font-semibold text-joppli-dark/60 mt-0.5 uppercase tracking-wider">
+                    {contact.role}
+                  </div>
+
+                  <div className="flex items-center gap-1.5 text-[11px] text-joppli-dark/50 mt-3 font-medium">
+                    <Mail className="w-3.5 h-3.5 text-joppli-dark/40 shrink-0" />
+                    <span className="truncate select-all lowercase">{contact.email}</span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 text-[10px] text-joppli-dark/40 mt-1 font-bold uppercase tracking-wider">
+                    <ShieldCheck className="w-3.5 h-3.5 text-joppli-green shrink-0" />
+                    <span>Last seen: {contact.lastActive}</span>
+                  </div>
+                </div>
+
+              </div>
+            ))}
+
+            {filteredContacts.length === 0 && (
+              <div className="col-span-1 md:col-span-2 py-12 flex flex-col items-center justify-center text-joppli-dark/40 border border-dashed border-joppli-grey rounded-xl bg-white/40">
+                <Users className="w-8 h-8 mb-2 opacity-50 text-joppli-dark/30" />
+                <span className="text-sm font-bold uppercase tracking-widest">No profiles found matching search</span>
+              </div>
+            )}
+          </div>
+        )}
 
       </div>
     </div>

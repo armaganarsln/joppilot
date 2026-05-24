@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Truck, Lock, Mail, Key, User, ArrowLeft, AlertCircle, CheckCircle2 } from 'lucide-react';
-import { auth, googleProvider } from '../firebase';
+import { auth, googleProvider, db } from '../firebase';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
@@ -17,6 +18,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onEnterTestVe
   const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [selectedProject, setSelectedProject] = useState<'zurich' | 'glarus'>('zurich');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -32,11 +34,36 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onEnterTestVe
         await signInWithEmailAndPassword(auth, email, password);
         onLogin();
       } else if (mode === 'register') {
-        await createUserWithEmailAndPassword(auth, email, password);
-        setSuccessMsg("Registration successful! Logging you in...");
-        setTimeout(() => {
-          onLogin();
-        }, 1000);
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        const user = userCredential.user;
+        
+        // Auto-admin rules mapping
+        const normalizedEmail = email.toLowerCase();
+        const isArmagan = normalizedEmail === 'armagan@joeppli.ch' || normalizedEmail === 'armaganarsln@gmail.com';
+        const isAfra = normalizedEmail === 'afra@joeppli.ch';
+        
+        const role = (isArmagan || isAfra) ? 'admin' : 'operator';
+        const status = (isArmagan || isAfra) ? 'approved' : 'pending';
+        const project = isArmagan ? 'zurich' : isAfra ? 'glarus' : selectedProject;
+
+        await setDoc(doc(db, 'operators', user.uid), {
+          uid: user.uid,
+          email: user.email,
+          role,
+          status,
+          project,
+          createdAt: new Date().toISOString()
+        });
+
+        if (status === 'approved') {
+          setSuccessMsg("Registration successful! Workspace access granted.");
+          setTimeout(() => {
+            onLogin();
+          }, 1000);
+        } else {
+          setSuccessMsg("Registration recorded successfully! Awaiting administrator approval.");
+          // Allow the onAuthStateChanged listener in App.tsx to catch the pending state!
+        }
       } else if (mode === 'forgot') {
         await sendPasswordResetEmail(auth, email);
         setSuccessMsg("Passcode reset link sent! Please check your inbox.");
@@ -68,7 +95,30 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onEnterTestVe
     setErrorMsg(null);
     setSuccessMsg(null);
     try {
-      await signInWithPopup(auth, googleProvider);
+      const result = await signInWithPopup(auth, googleProvider);
+      const user = result.user;
+
+      // Check if user operator profile already exists in Firestore
+      const docSnap = await getDoc(doc(db, 'operators', user.uid));
+      if (!docSnap.exists()) {
+        // First-time Google login: create profile in Firestore!
+        const normalizedEmail = (user.email || '').toLowerCase();
+        const isArmagan = normalizedEmail === 'armagan@joeppli.ch' || normalizedEmail === 'armaganarsln@gmail.com';
+        const isAfra = normalizedEmail === 'afra@joeppli.ch';
+        
+        const role = (isArmagan || isAfra) ? 'admin' : 'operator';
+        const status = (isArmagan || isAfra) ? 'approved' : 'pending';
+        const project = isArmagan ? 'zurich' : isAfra ? 'glarus' : selectedProject;
+
+        await setDoc(doc(db, 'operators', user.uid), {
+          uid: user.uid,
+          email: user.email,
+          role,
+          status,
+          project,
+          createdAt: new Date().toISOString()
+        });
+      }
       onLogin();
     } catch (error: any) {
       console.error("Google auth error:", error);
@@ -162,6 +212,24 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onEnterTestVe
                       className="block w-full appearance-none rounded-xl border border-joppli-grey pl-10 pr-4 py-3 placeholder-joppli-dark/30 shadow-sm focus:border-joppli-blue focus:outline-none focus:ring-1 focus:ring-joppli-blue text-sm font-semibold transition-colors"
                       placeholder="••••••••"
                     />
+                  </div>
+                </div>
+
+                {/* Workspace Project Selection (Zürich vs Glarus) */}
+                <div>
+                  <label htmlFor="workspace" className="block text-xs font-black uppercase tracking-widest text-joppli-dark/70">
+                    Workspace City / Project
+                  </label>
+                  <div className="mt-2">
+                    <select
+                      id="workspace"
+                      value={selectedProject}
+                      onChange={(e) => setSelectedProject(e.target.value as any)}
+                      className="block w-full rounded-xl border border-joppli-grey px-3 py-3 text-sm font-semibold text-joppli-dark focus:border-joppli-blue focus:outline-none focus:ring-1 focus:ring-joppli-blue bg-white transition-colors cursor-pointer"
+                    >
+                      <option value="zurich">Zürich (ERZ Municipal Waste)</option>
+                      <option value="glarus">Glarus (Municipal Waste)</option>
+                    </select>
                   </div>
                 </div>
               </>

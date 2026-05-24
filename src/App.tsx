@@ -24,13 +24,16 @@ import { TeleoperationView } from './components/TeleoperationView';
 import { INITIAL_VEHICLES, INITIAL_REQUESTS } from './mockData';
 import { Vehicle, CollectionRequest, Alert } from './types';
 import { TestVehicleScreen } from './components/TestVehicleScreen';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, onSnapshot, doc } from 'firebase/firestore';
 import { db, auth } from './firebase';
 import { onAuthStateChanged } from 'firebase/auth';
+import { Clock, XCircle, LogOut, ShieldAlert } from 'lucide-react';
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [currentUserProfile, setCurrentUserProfile] = useState<any>(null);
+  const [isProfileLoading, setIsProfileLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [activeVehicleDetailId, setActiveVehicleDetailId] = useState<string | null>(null);
@@ -41,27 +44,64 @@ export default function App() {
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
   const [listMode, setListMode] = useState<'vehicles' | 'tasks'>('vehicles');
 
-  // Real-time Firebase Authentication listener
+  // Real-time Firebase Authentication & Operator Profile listener
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    let unsubscribeProfile: (() => void) | null = null;
+    
+    setIsProfileLoading(true);
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       if (user) {
         setCurrentUser(user);
         setIsAuthenticated(true);
-        // Admin privilege check
-        const userEmail = user.email || '';
-        const authorizedAdmins = ['armagan@joeppli.ch', 'armaganarsln@gmail.com'];
-        if (authorizedAdmins.includes(userEmail.toLowerCase())) {
-          setIsAdmin(true);
-        } else {
-          setIsAdmin(false);
-        }
+        
+        // Listen to operator document in real-time
+        unsubscribeProfile = onSnapshot(doc(db, 'operators', user.uid), (docSnap) => {
+          if (docSnap.exists()) {
+            const profile = docSnap.data();
+            setCurrentUserProfile(profile);
+            setIsAdmin(profile.role === 'admin');
+          } else {
+            // First time Google or email user - fallback / wait for setDoc
+            const normalizedEmail = (user.email || '').toLowerCase();
+            const isArmagan = normalizedEmail === 'armagan@joeppli.ch' || normalizedEmail === 'armaganarsln@gmail.com';
+            const isAfra = normalizedEmail === 'afra@joeppli.ch';
+            
+            const role = (isArmagan || isAfra) ? 'admin' : 'operator';
+            const status = (isArmagan || isAfra) ? 'approved' : 'pending';
+            
+            setCurrentUserProfile({
+              uid: user.uid,
+              email: user.email,
+              role,
+              status,
+              project: isArmagan ? 'zurich' : isAfra ? 'glarus' : 'zurich'
+            });
+            setIsAdmin(role === 'admin');
+          }
+          setIsProfileLoading(false);
+        }, (error) => {
+          console.error("Error fetching operator profile snapshot:", error);
+          setIsProfileLoading(false);
+        });
       } else {
         setCurrentUser(null);
+        setCurrentUserProfile(null);
         setIsAuthenticated(false);
         setIsAdmin(false);
+        setIsProfileLoading(false);
+        if (unsubscribeProfile) {
+          unsubscribeProfile();
+          unsubscribeProfile = null;
+        }
       }
     });
-    return () => unsubscribe();
+    
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeProfile) {
+        unsubscribeProfile();
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -312,6 +352,137 @@ export default function App() {
     );
   }
 
+  if (isAuthenticated && isProfileLoading) {
+    return (
+      <div className="min-h-screen bg-joppli-light flex flex-col justify-center items-center font-sans">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-joppli-blue/20 border-t-joppli-blue rounded-full animate-spin"></div>
+          <p className="text-xs font-black uppercase tracking-widest text-joppli-dark/60">Loading Workspace Profile...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isAuthenticated && currentUserProfile?.status === 'pending') {
+    return (
+      <div className="min-h-screen bg-joppli-light flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans selection:bg-joppli-blue/20">
+        <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
+          <div className="flex justify-center mb-6">
+            <div className="flex items-end gap-1">
+              <span className="text-5xl font-black tracking-tight text-joppli-dark">jöppli</span>
+              <div className="flex gap-1 mb-3 ml-1">
+                <span className="w-2.5 h-2.5 bg-joppli-green rounded-full animate-ping"></span>
+              </div>
+            </div>
+          </div>
+          
+          <div className="bg-white py-10 px-6 shadow-sm sm:rounded-2xl border border-joppli-grey sm:px-10 flex flex-col items-center">
+            <div className="w-16 h-16 rounded-full bg-joppli-yellow/10 flex items-center justify-center text-joppli-yellow mb-6 animate-pulse">
+              <Clock className="w-8 h-8" />
+            </div>
+            
+            <h2 className="text-xl font-bold tracking-tight text-joppli-dark uppercase">
+              Access Pending Approval
+            </h2>
+            <p className="mt-3 text-sm text-joppli-dark/60 text-center font-medium leading-relaxed">
+              Your municipal operator registration has been successfully recorded. A workspace administrator must approve your credentials before you can log in.
+            </p>
+            
+            <div className="w-full bg-joppli-light border border-joppli-grey/80 rounded-xl p-4 my-6 text-left space-y-2.5">
+              <div className="flex justify-between items-center text-xs">
+                <span className="font-black uppercase tracking-widest text-joppli-dark/50">Operator Email</span>
+                <span className="font-bold text-joppli-dark lowercase">{currentUserProfile.email}</span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="font-black uppercase tracking-widest text-joppli-dark/50">Workspace City</span>
+                <span className="font-extrabold text-joppli-blue uppercase tracking-wider">
+                  {currentUserProfile.project === 'zurich' ? 'Zürich (ERZ)' : 'Glarus'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="font-black uppercase tracking-widest text-joppli-dark/50">Review Status</span>
+                <span className="px-2.5 py-1 rounded bg-joppli-yellow/15 border border-joppli-yellow/30 text-joppli-yellow font-black text-[9px] uppercase tracking-widest animate-pulse">
+                  Awaiting Admin
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 mb-6">
+              <div className="w-1.5 h-1.5 bg-joppli-green rounded-full animate-ping"></div>
+              <span className="text-[10px] font-black uppercase tracking-widest text-joppli-dark/55">
+                Listening for real-time activation...
+              </span>
+            </div>
+
+            <button
+              onClick={async () => {
+                await auth.signOut();
+              }}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-joppli-grey bg-white hover:bg-joppli-red/5 hover:text-joppli-red hover:border-joppli-red/20 px-4 py-3 text-xs font-bold text-joppli-dark uppercase tracking-widest transition-all cursor-pointer"
+            >
+              <LogOut className="w-4 h-4" />
+              Disconnect Session
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isAuthenticated && currentUserProfile?.status === 'rejected') {
+    return (
+      <div className="min-h-screen bg-joppli-light flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans selection:bg-joppli-red/20">
+        <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
+          <div className="flex justify-center mb-6">
+            <span className="text-4xl font-black tracking-tight text-joppli-dark">jöppli</span>
+          </div>
+          
+          <div className="bg-white py-10 px-6 shadow-sm sm:rounded-2xl border border-joppli-grey sm:px-10 flex flex-col items-center">
+            <div className="w-16 h-16 rounded-full bg-joppli-red/10 flex items-center justify-center text-joppli-red mb-6">
+              <ShieldAlert className="w-8 h-8" />
+            </div>
+            
+            <h2 className="text-xl font-bold tracking-tight text-joppli-dark uppercase">
+              Access Authorization Denied
+            </h2>
+            <p className="mt-3 text-sm text-joppli-dark/60 text-center font-medium leading-relaxed">
+              Your municipal operator request was reviewed and declined by the city administration. Please contact your local supervisor to coordinate authorization.
+            </p>
+            
+            <div className="w-full bg-joppli-light border border-joppli-grey/80 rounded-xl p-4 my-6 text-left space-y-2.5">
+              <div className="flex justify-between items-center text-xs">
+                <span className="font-black uppercase tracking-widest text-joppli-dark/50">Operator Email</span>
+                <span className="font-bold text-joppli-dark lowercase">{currentUserProfile.email}</span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="font-black uppercase tracking-widest text-joppli-dark/50">Workspace City</span>
+                <span className="font-extrabold text-joppli-blue uppercase tracking-wider">
+                  {currentUserProfile.project === 'zurich' ? 'Zürich (ERZ)' : 'Glarus'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="font-black uppercase tracking-widest text-joppli-dark/50">Review Status</span>
+                <span className="px-2.5 py-1 rounded bg-joppli-red/15 border border-joppli-red/30 text-joppli-red font-black text-[9px] uppercase tracking-widest">
+                  Access Blocked
+                </span>
+              </div>
+            </div>
+
+            <button
+              onClick={async () => {
+                await auth.signOut();
+              }}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-transparent bg-joppli-dark text-white hover:bg-joppli-blue px-4 py-3 text-xs font-bold uppercase tracking-widest transition-all cursor-pointer"
+            >
+              <LogOut className="w-4 h-4" />
+              Return to Login Screen
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-screen flex font-sans text-joppli-dark selection:bg-joppli-green/20">
       <LeftSidebar activeTab={activeTab} onTabChange={handleTabChange} />
@@ -322,6 +493,7 @@ export default function App() {
           vehicles={vehicles}
           requests={requests}
           currentUser={currentUser}
+          currentUserProfile={currentUserProfile}
           isAdmin={isAdmin}
           onLogout={async () => {
             await auth.signOut();
@@ -408,7 +580,7 @@ export default function App() {
           )}
 
           {activeTab === 'users' && (
-             <ContactsUsersView />
+             <ContactsUsersView currentUserProfile={currentUserProfile} />
           )}
 
           {activeTab === 'inventory' && (

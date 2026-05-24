@@ -7,6 +7,7 @@ interface TopBarProps {
   vehicles: Vehicle[];
   requests: CollectionRequest[];
   currentUser: any;
+  currentUserProfile?: any;
   isAdmin: boolean;
   onLogout: () => void;
   onClearAlerts: () => void;
@@ -15,6 +16,7 @@ interface TopBarProps {
 export const TopBar: React.FC<TopBarProps> = ({ 
   alerts, 
   currentUser, 
+  currentUserProfile,
   isAdmin, 
   onLogout, 
   onClearAlerts 
@@ -64,6 +66,14 @@ export const TopBar: React.FC<TopBarProps> = ({
     .join('')
     .slice(0, 2)
     .toUpperCase();
+
+  // Dynamic privilege label
+  let privilegeLabel = isAdmin ? 'System Admin' : 'Operator';
+  if (currentUserProfile) {
+    const projectLabel = currentUserProfile.project === 'zurich' ? 'Zürich' : 'Glarus';
+    const roleLabel = currentUserProfile.role === 'admin' ? 'Admin' : 'Operator';
+    privilegeLabel = `${projectLabel} ${roleLabel}`;
+  }
 
   return (
     <header className="h-16 bg-white border-b border-joppli-grey flex items-center justify-between px-6 shrink-0 z-10 w-full shadow-sm">
@@ -169,7 +179,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                 isAdmin ? 'text-joppli-green' : 'text-joppli-blue'
               }`}>
                 {isAdmin && <ShieldCheck className="w-2.5 h-2.5 inline" />}
-                {isAdmin ? 'System Admin' : 'Operator'}
+                {privilegeLabel}
               </span>
             </div>
           </button>
@@ -206,7 +216,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                     : 'bg-joppli-blue/10 text-joppli-blue border-joppli-blue/20'
                 }`}>
                   <ShieldCheck className="w-3.5 h-3.5" />
-                  {isAdmin ? 'Fully Privileged Admin' : 'Standard Field Operator'}
+                  {privilegeLabel}
                 </span>
               </div>
 
