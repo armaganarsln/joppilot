@@ -2,14 +2,16 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Camera, Video, AlertTriangle, Play, Pause, Route, Check, RefreshCcw } from 'lucide-react';
 import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Vehicle } from '../types';
+import { Vehicle, WorkspaceProject } from '../types';
+import { vehicleName } from '../config/vehicles';
 
 interface RemoteAssistanceViewProps {
   vehicles: Vehicle[];
   onRemoteDrive?: (vehicleId: string) => void;
+  project?: WorkspaceProject;
 }
 
-export const RemoteAssistanceView: React.FC<RemoteAssistanceViewProps> = ({ vehicles, onRemoteDrive }) => {
+export const RemoteAssistanceView: React.FC<RemoteAssistanceViewProps> = ({ vehicles, onRemoteDrive, project }) => {
   const [selectedVehicleId, setSelectedVehicleId] = useState<'v1' | 'v2'>('v2');
   const [isTestActive, setIsTestActive] = useState(false);
   const [avState, setAvState] = useState('ASSISTANCE_REQUESTED');
@@ -23,8 +25,11 @@ export const RemoteAssistanceView: React.FC<RemoteAssistanceViewProps> = ({ vehi
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const candAdded = useRef<Set<string>>(new Set());
+  // Monotonic command counter so the vehicle detects new commands without
+  // cross-device wall-clock comparison (see TestVehicleScreen).
+  const commandSeqRef = useRef(0);
 
-  const currentVehicleName = selectedVehicleId === 'v1' ? 'JÖP-01' : 'JÖP-02';
+  const currentVehicleName = vehicleName(selectedVehicleId, project ?? 'zurich');
 
   // Listen to selected vehicle changes from firestore
   useEffect(() => {
@@ -152,8 +157,10 @@ export const RemoteAssistanceView: React.FC<RemoteAssistanceViewProps> = ({ vehi
     ]);
 
     // Push to Firestore
+    commandSeqRef.current += 1;
     await updateDoc(doc(db, 'test_vehicles', selectedVehicleId), {
       operatorCommand: command,
+      operatorCommandSeq: commandSeqRef.current,
       operatorCommandTimestamp: Date.now(),
       avState: command === 'TAKE_OVER' ? 'MANUAL' : command === 'PROCEED' ? 'AUTONOMOUS' : avState,
       updatedAt: Date.now()

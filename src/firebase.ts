@@ -41,13 +41,14 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   throw new Error(JSON.stringify(errInfo));
 }
 
-// Warm up connection
-async function testConnection() {
+// Warm up the Firestore connection with a read against a collection that is
+// actually readable under the security rules (test_vehicles allows public get),
+// so the warm-up succeeds instead of always tripping the default-deny rule.
+async function warmUpConnection() {
   try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-  } catch (error) {
-    // Non-blocking fail
-    console.warn("Firestore warm-up check completed.");
+    await getDocFromServer(doc(db, 'test_vehicles', '__warmup__'));
+  } catch {
+    // Non-blocking — a missing document still establishes the connection.
   }
 }
-testConnection();
+warmUpConnection();

@@ -331,9 +331,23 @@ export default function App() {
     ]);
   };
 
-  const handleSendMessage = async (msg: string) => {
-    // keeping signature
-    return "Local mode active";
+  const handleSendMessage = async (msg: string): Promise<string> => {
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: msg,
+          fleetState: { vehicles, requests, alerts, project: currentUserProfile?.project },
+        }),
+      });
+      if (!response.ok) throw new Error(`Chat API responded ${response.status}`);
+      const data = await response.json();
+      return data.reply ?? "No response from fleet intelligence.";
+    } catch (error) {
+      console.error("Chat request failed:", error);
+      return "Unable to reach fleet intelligence. Please check your connection and try again.";
+    }
   };
 
   const handleTabChange = (tab: string) => {
@@ -592,7 +606,7 @@ export default function App() {
           )}
 
           {activeTab === 'assistance' && (
-             <RemoteAssistanceView onRemoteDrive={setTeleopVehicleId} />
+             <RemoteAssistanceView vehicles={vehicles} project={currentUserProfile?.project} onRemoteDrive={setTeleopVehicleId} />
           )}
 
           {activeTab === 'missions' && (
@@ -652,7 +666,11 @@ export default function App() {
       </div>
 
       {teleopVehicleId && (
-        <TeleoperationView vehicleId={teleopVehicleId} onExit={() => setTeleopVehicleId(null)} />
+        <TeleoperationView
+          vehicleId={teleopVehicleId}
+          project={currentUserProfile?.project}
+          onExit={() => setTeleopVehicleId(null)}
+        />
       )}
     </div>
   );

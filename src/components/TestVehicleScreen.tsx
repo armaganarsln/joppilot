@@ -2,12 +2,18 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Camera, Compass, Battery, MapPin, AlertOctagon, RotateCcw, Volume2, Truck, ChevronDown, Check, CornerRightUp } from 'lucide-react';
 import { doc, onSnapshot, setDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
+import { vehicleName } from '../config/vehicles';
 
 // Minimal typing for the non-standard Battery Status API (not in TS DOM lib).
 interface BatteryManager extends EventTarget {
   level: number;
 }
 type NavigatorWithBattery = Navigator & { getBattery: () => Promise<BatteryManager> };
+
+// If no operator heartbeat is seen for this long while under MANUAL control, the
+// deadman watchdog zeroes throttle/steering and reverts to a safe stop. Must be
+// comfortably larger than the operator's HEARTBEAT_INTERVAL_MS (currently 1s).
+const DEADMAN_TIMEOUT_MS = 2500;
 
 interface TestVehicleScreenProps {
   onBack: () => void;
@@ -30,6 +36,7 @@ export const TestVehicleScreen: React.FC<TestVehicleScreenProps> = ({ onBack }) 
   const [showCommandOverlay, setShowCommandOverlay] = useState(false);
   const [steeringAngle, setSteeringAngle] = useState<number>(0);
   const [throttle, setThrottle] = useState<number>(0);
+  const [linkLost, setLinkLost] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
@@ -37,6 +44,12 @@ export const TestVehicleScreen: React.FC<TestVehicleScreenProps> = ({ onBack }) 
   const candAdded = useRef<Set<string>>(new Set());
   const lastCommandRef = useRef<string | null>(null);
   const lastCommandTimestampRef = useRef<number>(0);
+  // Tracks the last command sequence number we acted on, and the freshest
+  // operator heartbeat we've observed (for the deadman watchdog).
+  const lastCommandSeqRef = useRef<number>(-1);
+  const lastHeartbeatRef = useRef<number>(0);
+  const avStateRef = useRef(avState);
+  avStateRef.current = avState;
 
   // Beep synthesis using Web Audio API
   const playBeep = (type: 'success' | 'alert') => {
@@ -234,19 +247,32 @@ export const TestVehicleScreen: React.FC<TestVehicleScreenProps> = ({ onBack }) 
         setThrottle(data.throttle);
       }
 
-      // Check if Operator Command changed
-      if (data.operatorCommand && data.operatorCommandTimestamp) {
-        const cmdTime = data.operatorCommandTimestamp;
-        const diffMs = Date.now() - cmdTime;
+      // Record operator liveness for the deadman watchdog.
+      if (typeof data.operatorHeartbeat === 'number') {
+        lastHeartbeatRef.current = data.operatorHeartbeat;
+        setLinkLost(false);
+      }
 
-        // If command is relatively recent (within 5 seconds) and is a NEW command
-        if (diffMs < 5000 && lastCommandTimestampRef.current !== cmdTime) {
+      // Act on a new operator command. We key off a monotonic sequence number
+      // (operatorCommandSeq) instead of comparing wall-clock timestamps across
+      // two devices, which clock skew would otherwise break. Falls back to the
+      // timestamp only for legacy writes that predate the sequence field.
+      if (data.operatorCommand) {
+        const seq = typeof data.operatorCommandSeq === 'number' ? data.operatorCommandSeq : null;
+        const cmdTime = data.operatorCommandTimestamp ?? 0;
+        const isNew = seq !== null
+          ? seq > lastCommandSeqRef.current
+          : cmdTime !== lastCommandTimestampRef.current;
+
+        if (isNew) {
+          if (seq !== null) lastCommandSeqRef.current = seq;
           lastCommandTimestampRef.current = cmdTime;
           setOperatorCommand(data.operatorCommand);
           setShowCommandOverlay(true);
 
           if (data.operatorCommand === 'TAKE_OVER') {
             setAvState('MANUAL');
+            lastHeartbeatRef.current = Date.now(); // grace period for first heartbeat
             playBeep('alert');
           } else {
             playBeep('success');
@@ -305,6 +331,33 @@ export const TestVehicleScreen: React.FC<TestVehicleScreenProps> = ({ onBack }) 
     };
   }, [vehicleId]);
 
+  // Deadman watchdog: while under MANUAL teleop control, if the operator's
+  // heartbeat goes stale (link loss), zero the controls and revert to a safe
+  // stop instead of holding the last throttle command indefinitely.
+  useEffect(() => {
+    if (!vehicleId) return;
+
+    const watchdog = setInterval(() => {
+      if (avStateRef.current !== 'MANUAL') return;
+      const sinceHeartbeat = Date.now() - lastHeartbeatRef.current;
+      if (lastHeartbeatRef.current > 0 && sinceHeartbeat > DEADMAN_TIMEOUT_MS) {
+        setLinkLost(true);
+        setThrottle(0);
+        setSteeringAngle(0);
+        setAvState('MRM'); // minimal-risk maneuver (safe stop)
+        playBeep('alert');
+        updateDoc(doc(db, 'test_vehicles', vehicleId), {
+          throttle: 0,
+          steeringAngle: 0,
+          avState: 'MRM',
+          updatedAt: Date.now(),
+        }).catch(() => {});
+      }
+    }, 500);
+
+    return () => clearInterval(watchdog);
+  }, [vehicleId]);
+
   // Upload telemetry updates to Firestore
   useEffect(() => {
     if (!vehicleId) return;
@@ -314,7 +367,7 @@ export const TestVehicleScreen: React.FC<TestVehicleScreenProps> = ({ onBack }) 
       const docRef = doc(db, 'test_vehicles', vehicleId);
       await setDoc(docRef, {
         id: vehicleId,
-        name: vehicleId === 'v1' ? 'JÖP-01' : 'JÖP-02',
+        name: vehicleName(vehicleId),
         isActive: true,
         avState,
         lat: coords.lat,
@@ -444,11 +497,21 @@ export const TestVehicleScreen: React.FC<TestVehicleScreenProps> = ({ onBack }) 
         </div>
       )}
 
+      {/* Deadman / link-loss safety banner */}
+      {linkLost && (
+        <div className="fixed top-0 inset-x-0 z-[70] bg-joppli-red text-white px-6 py-2 flex items-center justify-center gap-3 shadow-lg animate-pulse">
+          <AlertOctagon className="w-4 h-4" />
+          <span className="text-xs font-black tracking-widest">
+            OPERATOR LINK LOST — SAFE STOP ENGAGED (MRM)
+          </span>
+        </div>
+      )}
+
       {/* Top Tablet-HUD */}
       <div className="h-20 bg-[#14151b] border-b border-white/10 px-6 flex items-center justify-between shrink-0 z-20">
         <div className="flex items-center gap-4">
           <span className="font-extrabold text-[#f5f5f7] tracking-wider text-sm flex items-center gap-2">
-            <Truck className="w-5 h-5 text-joppli-green" /> {vehicleId === 'v1' ? 'JÖP-01' : 'JÖP-02'}
+            <Truck className="w-5 h-5 text-joppli-green" /> {vehicleName(vehicleId ?? 'v1')}
           </span>
           <div className="h-6 w-px bg-white/20"></div>
           <span className="text-[10px] text-white/50 font-bold">Simulator Active</span>

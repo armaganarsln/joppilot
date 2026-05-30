@@ -1,14 +1,25 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Video, Radio, Camera, LogOut, Loader2 } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Video, Radio, Camera, AlertTriangle } from 'lucide-react';
 import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
+import { vehicleName } from '../config/vehicles';
+import type { WorkspaceProject } from '../types';
+
+// Cadence at which the operator stamps a liveness heartbeat onto the vehicle
+// document. The vehicle's deadman watchdog (TestVehicleScreen) zeroes throttle
+// if it stops seeing fresh heartbeats — see DEADMAN_TIMEOUT_MS there.
+const HEARTBEAT_INTERVAL_MS = 1000;
+// Min delay between control writes while dragging a slider, to avoid a Firestore
+// write on every pixel of pointer movement.
+const CONTROL_WRITE_DEBOUNCE_MS = 80;
 
 interface TeleoperationViewProps {
   vehicleId: string;
   onExit: () => void;
+  project?: WorkspaceProject;
 }
 
-export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId, onExit }) => {
+export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId, onExit, project }) => {
   const [latency, setLatency] = useState(42);
   const [speed, setSpeed] = useState(0);
   const [steering, setSteering] = useState(0); // -45 to 45 deg
@@ -16,10 +27,40 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
   const [battery, setBattery] = useState(82.4);
   const [isTestActive, setIsTestActive] = useState(false);
   const [p2pConnected, setP2pConnected] = useState(false);
+  const [linkDegraded, setLinkDegraded] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const candAdded = useRef<Set<string>>(new Set());
+  // Monotonic counter so the vehicle can detect a genuinely new command without
+  // relying on cross-device wall-clock comparison (which clock skew breaks).
+  const commandSeqRef = useRef(0);
+  const controlWriteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingControlRef = useRef<{ steeringAngle?: number; throttle?: number }>({});
+
+  const displayName = vehicleName(vehicleId, project ?? 'zurich');
+
+  // Debounced write of steering/throttle control inputs to Firestore.
+  const flushControlWrite = useCallback(() => {
+    const payload = pendingControlRef.current;
+    pendingControlRef.current = {};
+    if (Object.keys(payload).length === 0) return;
+    updateDoc(doc(db, 'test_vehicles', vehicleId), {
+      ...payload,
+      operatorHeartbeat: Date.now(),
+      updatedAt: Date.now(),
+    }).catch(() => {});
+  }, [vehicleId]);
+
+  const queueControlWrite = useCallback((patch: { steeringAngle?: number; throttle?: number }) => {
+    if (!isTestActive) return;
+    pendingControlRef.current = { ...pendingControlRef.current, ...patch };
+    if (controlWriteTimerRef.current) return;
+    controlWriteTimerRef.current = setTimeout(() => {
+      controlWriteTimerRef.current = null;
+      flushControlWrite();
+    }, CONTROL_WRITE_DEBOUNCE_MS);
+  }, [isTestActive, flushControlWrite]);
 
   // Listen to the live vehicle document from Firestore
   useEffect(() => {
@@ -56,8 +97,10 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
           pc.onconnectionstatechange = () => {
             if (pc.connectionState === 'connected') {
               setP2pConnected(true);
+              setLinkDegraded(false);
             } else if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
               setP2pConnected(false);
+              setLinkDegraded(true);
             }
           };
 
@@ -128,40 +171,79 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
     };
   }, [vehicleId]);
 
-  // Fake telemetry when simulator is offline
+  // Local cruise simulation when no real simulator/hardware is attached.
   useEffect(() => {
     if (isTestActive) return;
-
     const interval = setInterval(() => {
       setLatency(38 + Math.random() * 8);
-      // Simulate slow manual cruise speed based on current throttle
       setSpeed((throttle / 100) * 12);
     }, 500);
-
     return () => clearInterval(interval);
   }, [isTestActive, throttle]);
 
-  // Write Steering Slider change directly to Firestore
-  const handleSteeringChange = async (val: number) => {
-    setSteering(val);
-    if (isTestActive) {
+  // While connected: stamp a liveness heartbeat and measure real RTT from
+  // WebRTC stats so the latency readout reflects the actual link.
+  useEffect(() => {
+    if (!isTestActive) return;
+
+    const heartbeat = setInterval(async () => {
       await updateDoc(doc(db, 'test_vehicles', vehicleId), {
-        steeringAngle: val,
-        updatedAt: Date.now()
+        operatorHeartbeat: Date.now(),
+        updatedAt: Date.now(),
       }).catch(() => {});
-    }
+
+      const pc = pcRef.current;
+      if (pc && pc.connectionState === 'connected') {
+        try {
+          const stats = await pc.getStats();
+          stats.forEach((report) => {
+            if (report.type === 'candidate-pair' && report.nominated && typeof report.currentRoundTripTime === 'number') {
+              setLatency(report.currentRoundTripTime * 1000); // s -> ms
+            }
+          });
+        } catch {
+          /* getStats unsupported / transient — keep last reading */
+        }
+      }
+    }, HEARTBEAT_INTERVAL_MS);
+
+    return () => clearInterval(heartbeat);
+  }, [isTestActive, vehicleId]);
+
+  // Steering slider — local state updates instantly; writes are debounced.
+  const handleSteeringChange = (val: number) => {
+    setSteering(val);
+    queueControlWrite({ steeringAngle: val });
   };
 
-  // Write Throttle Slider change directly to Firestore
-  const handleThrottleChange = async (val: number) => {
+  // Throttle slider — local state updates instantly; writes are debounced.
+  const handleThrottleChange = (val: number) => {
     setThrottle(val);
+    queueControlWrite({ throttle: val });
+  };
+
+  // Safe handback: zero the controls, clear the heartbeat, and hand the vehicle
+  // back to autonomy before tearing down the session.
+  const handleExit = useCallback(async () => {
+    if (controlWriteTimerRef.current) {
+      clearTimeout(controlWriteTimerRef.current);
+      controlWriteTimerRef.current = null;
+    }
     if (isTestActive) {
+      commandSeqRef.current += 1;
       await updateDoc(doc(db, 'test_vehicles', vehicleId), {
-        throttle: val,
-        updatedAt: Date.now()
+        steeringAngle: 0,
+        throttle: 0,
+        avState: 'AUTONOMOUS',
+        operatorCommand: 'PROCEED',
+        operatorCommandSeq: commandSeqRef.current,
+        operatorCommandTimestamp: Date.now(),
+        operatorHeartbeat: null,
+        updatedAt: Date.now(),
       }).catch(() => {});
     }
-  };
+    onExit();
+  }, [isTestActive, vehicleId, onExit]);
 
   return (
     <div className="fixed inset-0 z-50 bg-[#0c0d12] text-white font-sans flex flex-col uppercase tracking-widest overflow-hidden">
@@ -173,28 +255,31 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
              <span className="text-[10px] text-white/50 font-bold mb-0.5">Teleoperation Active</span>
              <div className="flex items-center gap-2">
                <span className="w-2.5 h-2.5 rounded-full bg-joppli-red animate-pulse shadow-[0_0_8px_rgba(245,80,69,0.8)]"></span>
-               <span className="font-mono font-black text-base text-[#f5f5f7]">{vehicleId === 'v1' ? 'JÖP-01' : 'JÖP-02'}</span>
+               <span className="font-mono font-black text-base text-[#f5f5f7]">{displayName}</span>
              </div>
           </div>
           <div className="h-8 w-px bg-white/20"></div>
           <div className="flex gap-6">
              <div className="flex flex-col">
                <span className="text-[10px] text-white/50 mb-0.5">Link Status</span>
-               <span className="text-xs font-black text-joppli-green flex items-center gap-1.5">
-                 <Radio className="w-3.5 h-3.5" /> {isTestActive ? (p2pConnected ? "P2P VIDEO ONLINE" : "SIGNALING CONNECTING") : "LOCAL MODE"}
+               <span className={`text-xs font-black flex items-center gap-1.5 ${linkDegraded ? 'text-joppli-red' : 'text-joppli-green'}`}>
+                 {linkDegraded
+                   ? <><AlertTriangle className="w-3.5 h-3.5 animate-pulse" /> LINK DEGRADED</>
+                   : <><Radio className="w-3.5 h-3.5" /> {isTestActive ? (p2pConnected ? "P2P VIDEO ONLINE" : "SIGNALING CONNECTING") : "LOCAL MODE"}</>
+                 }
                </span>
              </div>
              <div className="flex flex-col">
                <span className="text-[10px] text-white/50 mb-0.5">Latency</span>
-               <span className="text-xs font-black font-mono text-white">
-                 {isTestActive ? "18 ms" : `${latency.toFixed(0)} ms`}
+               <span className={`text-xs font-black font-mono ${latency > 250 ? 'text-joppli-red' : 'text-white'}`}>
+                 {`${latency.toFixed(0)} ms`}
                </span>
              </div>
           </div>
         </div>
 
-        <button 
-          onClick={onExit}
+        <button
+          onClick={handleExit}
           className="flex items-center gap-2 px-5 py-2 bg-white/5 hover:bg-joppli-red border border-white/10 hover:border-joppli-red rounded-lg text-xs font-bold transition-all shrink-0 uppercase tracking-widest"
         >
           End Teleop Session
