@@ -3,6 +3,12 @@ import { Camera, Compass, Battery, MapPin, AlertOctagon, RotateCcw, Volume2, Tru
 import { doc, onSnapshot, setDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 
+// Minimal typing for the non-standard Battery Status API (not in TS DOM lib).
+interface BatteryManager extends EventTarget {
+  level: number;
+}
+type NavigatorWithBattery = Navigator & { getBattery: () => Promise<BatteryManager> };
+
 interface TestVehicleScreenProps {
   onBack: () => void;
 }
@@ -66,7 +72,7 @@ export const TestVehicleScreen: React.FC<TestVehicleScreenProps> = ({ onBack }) 
   useEffect(() => {
     // Attempt standard browser battery API
     if ('getBattery' in navigator) {
-      (navigator as any).getBattery().then((bat: any) => {
+      (navigator as NavigatorWithBattery).getBattery().then((bat: BatteryManager) => {
         setBattery(Math.round(bat.level * 100));
         bat.addEventListener('levelchange', () => {
           setBattery(Math.round(bat.level * 100));
@@ -168,7 +174,7 @@ export const TestVehicleScreen: React.FC<TestVehicleScreenProps> = ({ onBack }) 
         await pc.setLocalDescription(offer);
 
         // Define candidate tracking
-        const localCandidates: any[] = [];
+        const localCandidates: RTCIceCandidateInit[] = [];
         pc.onicecandidate = async (event) => {
           if (event.candidate) {
             localCandidates.push(event.candidate.toJSON());
@@ -189,9 +195,9 @@ export const TestVehicleScreen: React.FC<TestVehicleScreenProps> = ({ onBack }) 
           updatedAt: Date.now()
         });
 
-      } catch (err: any) {
+      } catch (err) {
         console.error("Signaling & media init failed:", err);
-        setErrorMsg(err.message || String(err));
+        setErrorMsg(err instanceof Error ? err.message : String(err));
       }
     };
 
@@ -278,8 +284,8 @@ export const TestVehicleScreen: React.FC<TestVehicleScreenProps> = ({ onBack }) 
       // 2. Process Operator ICE candidates
       if (data.candidates_operator) {
         try {
-          const remoteCandidates = JSON.parse(data.candidates_operator);
-          remoteCandidates.forEach((cand: any) => {
+          const remoteCandidates: RTCIceCandidateInit[] = JSON.parse(data.candidates_operator);
+          remoteCandidates.forEach((cand) => {
             const candString = JSON.stringify(cand);
             if (!candAdded.current.has(candString)) {
               pc.addIceCandidate(new RTCIceCandidate(cand))

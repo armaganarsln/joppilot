@@ -82,7 +82,7 @@ export const RemoteAssistanceView: React.FC<RemoteAssistanceViewProps> = ({ vehi
           };
 
           // Generate operator peer candidates list
-          const localCandidates: any[] = [];
+          const localCandidates: RTCIceCandidateInit[] = [];
           pc.onicecandidate = async (event) => {
             if (event.candidate) {
               localCandidates.push(event.candidate.toJSON());
@@ -115,8 +115,8 @@ export const RemoteAssistanceView: React.FC<RemoteAssistanceViewProps> = ({ vehi
       // Sync ICE candidates
       if (data.candidates_vehicle && pcRef.current) {
         try {
-          const remoteCandidates = JSON.parse(data.candidates_vehicle);
-          remoteCandidates.forEach((cand: any) => {
+          const remoteCandidates: RTCIceCandidateInit[] = JSON.parse(data.candidates_vehicle);
+          remoteCandidates.forEach((cand) => {
             const candStr = JSON.stringify(cand);
             if (!candAdded.current.has(candStr)) {
               pcRef.current?.addIceCandidate(new RTCIceCandidate(cand))
