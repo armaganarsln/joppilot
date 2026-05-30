@@ -16,8 +16,20 @@ service cloud.firestore {
       return request.resource.data; 
     }
     
-    function existing() { 
-      return resource.data; 
+    function existing() {
+      return resource.data;
+    }
+
+    // Admin allowlist — the single enforcement point for elevated privileges.
+    // Keep in sync with src/config/access.ts (client UX only; this is authoritative).
+    function isAdminEmail() {
+      return request.auth != null
+        && request.auth.token.email != null
+        && (
+          request.auth.token.email.lower() == 'armagan@joeppli.ch' ||
+          request.auth.token.email.lower() == 'armaganarsln@gmail.com' ||
+          request.auth.token.email.lower() == 'afra@joeppli.ch'
+        );
     }
 
     // Schema Validation for TestVehicle
@@ -57,24 +69,41 @@ service cloud.firestore {
       allow delete: if isValidId(vehicleId);
     }
 
-    // Security Rules for Operators Profile Collection
+    // Operator Profile Collection.
+    // role/status are authorization-bearing fields. A regular user may only ever
+    // create/keep themselves as a pending 'operator'; elevation to admin or to
+    // an approved/rejected status is restricted to the admin allowlist. This
+    // prevents a signed-in user from self-promoting to admin via the client SDK.
     match /operators/{operatorId} {
-      allow read, write: if request.auth != null && (
-        request.auth.uid == operatorId || 
-        request.auth.token.email.toLowerCase() == 'armagan@joeppli.ch' || 
-        request.auth.token.email.toLowerCase() == 'armaganarsln@gmail.com' || 
-        request.auth.token.email.toLowerCase() == 'afra@joeppli.ch'
+      // Users can read their own profile; admins can read any single profile.
+      allow get: if request.auth != null && (request.auth.uid == operatorId || isAdminEmail());
+      // Only admins may query/list the collection (e.g. the approval queue).
+      allow list: if isAdminEmail();
+
+      allow create: if request.auth != null && request.auth.uid == operatorId && (
+        isAdminEmail() ||
+        (incoming().role == 'operator' && incoming().status == 'pending')
       );
+
+      allow update: if request.auth != null && (
+        isAdminEmail() ||
+        (
+          request.auth.uid == operatorId &&
+          incoming().role == 'operator' &&
+          incoming().status != 'approved' &&
+          incoming().status != 'rejected'
+        )
+      );
+
+      allow delete: if isAdminEmail();
     }
 
-    // Security Rules for Mail Queue Collection
+    // Mail Queue Collection (Firestore "Trigger Email" extension).
+    // Any signed-in user may enqueue their own approval-request email; only
+    // admins can read or manage the queue.
     match /mail/{mailId} {
       allow create: if request.auth != null;
-      allow read, update, delete: if request.auth != null && (
-        request.auth.token.email.toLowerCase() == 'armagan@joeppli.ch' || 
-        request.auth.token.email.toLowerCase() == 'armaganarsln@gmail.com' || 
-        request.auth.token.email.toLowerCase() == 'afra@joeppli.ch'
-      );
+      allow read, update, delete: if isAdminEmail();
     }
   }
 }

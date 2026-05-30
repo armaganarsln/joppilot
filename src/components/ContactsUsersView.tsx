@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { db } from '../firebase';
 import { collection, query, where, onSnapshot, doc, updateDoc } from 'firebase/firestore';
+import type { OperatorProfile } from '../types';
 
 interface Contact {
   name: string;
@@ -24,13 +25,15 @@ interface Contact {
 }
 
 interface ContactsUsersViewProps {
-  currentUserProfile?: any;
+  currentUserProfile?: OperatorProfile | null;
 }
+
+type PendingOperator = OperatorProfile & { id: string };
 
 export const ContactsUsersView: React.FC<ContactsUsersViewProps> = ({ currentUserProfile }) => {
   const [activeSubTab, setActiveSubTab] = useState<'operators' | 'safety' | 'erz' | 'hardware' | 'approval_queue'>('operators');
   const [searchTerm, setSearchTerm] = useState('');
-  const [pendingOperators, setPendingOperators] = useState<any[]>([]);
+  const [pendingOperators, setPendingOperators] = useState<PendingOperator[]>([]);
   const [loadingPending, setLoadingPending] = useState(false);
 
   // Sync real-time pending operators for the admin's project
@@ -45,9 +48,9 @@ export const ContactsUsersView: React.FC<ContactsUsersViewProps> = ({ currentUse
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const ops: any[] = [];
+      const ops: PendingOperator[] = [];
       snapshot.forEach(docSnap => {
-        ops.push({ id: docSnap.id, ...docSnap.data() });
+        ops.push({ id: docSnap.id, ...(docSnap.data() as OperatorProfile) });
       });
       setPendingOperators(ops);
       setLoadingPending(false);

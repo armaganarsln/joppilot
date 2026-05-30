@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Windows Explorer artifacts
+desktop.ini

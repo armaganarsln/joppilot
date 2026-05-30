@@ -1,5 +1,19 @@
 export type VehicleStatus = 'idle' | 'on_route' | 'charging' | 'alert';
 
+// ---- Operator / workspace access model ----
+export type OperatorRole = 'admin' | 'operator';
+export type OperatorStatus = 'pending' | 'approved' | 'rejected';
+export type WorkspaceProject = 'zurich' | 'glarus';
+
+export interface OperatorProfile {
+  uid: string;
+  email: string | null;
+  role: OperatorRole;
+  status: OperatorStatus;
+  project: WorkspaceProject;
+  createdAt?: string;
+}
+
 export interface Location {
   id: string;
   lat: number;

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Vehicle, CollectionRequest } from '../types';
+import { Vehicle, CollectionRequest, OperatorProfile } from '../types';
 import { MapContainer, TileLayer, Marker, Polyline, Tooltip, CircleMarker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { LOCATIONS, GLARUS_LOCATIONS } from '../mockData';
@@ -10,7 +10,7 @@ interface MapAreaProps {
   onSelectVehicle: (id: string) => void;
   requests?: CollectionRequest[];
   onAssignRequest?: (reqId: string, vehicleId: string) => void;
-  currentUserProfile?: any;
+  currentUserProfile?: OperatorProfile | null;
 }
 
 // Custom icon using L.divIcon with rotating truck

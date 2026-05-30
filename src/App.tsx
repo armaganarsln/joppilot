@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { TopBar } from './components/TopBar';
 import { LeftSidebar } from './components/LeftSidebar';
 import { ListPanel } from './components/ListPanel';
@@ -22,17 +22,18 @@ import { ChatBox } from './components/ChatBox';
 import { LoginScreen } from './components/LoginScreen';
 import { TeleoperationView } from './components/TeleoperationView';
 import { INITIAL_VEHICLES, INITIAL_REQUESTS, GLARUS_VEHICLES, GLARUS_REQUESTS } from './mockData';
-import { Vehicle, CollectionRequest, Alert } from './types';
+import { Vehicle, CollectionRequest, Alert, OperatorProfile } from './types';
 import { TestVehicleScreen } from './components/TestVehicleScreen';
 import { collection, onSnapshot, doc, setDoc } from 'firebase/firestore';
 import { db, auth } from './firebase';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, User } from 'firebase/auth';
+import { getAdminProject } from './config/access';
 import { Clock, XCircle, LogOut, ShieldAlert } from 'lucide-react';
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [currentUser, setCurrentUser] = useState<any>(null);
-  const [currentUserProfile, setCurrentUserProfile] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [currentUserProfile, setCurrentUserProfile] = useState<OperatorProfile | null>(null);
   const [isProfileLoading, setIsProfileLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('dashboard');
@@ -43,6 +44,8 @@ export default function App() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
   const [listMode, setListMode] = useState<'vehicles' | 'tasks'>('vehicles');
+  // Tracks vehicles already flagged for low battery so each only alerts once per drain cycle.
+  const lowBatteryAlertedRef = useRef<Set<string>>(new Set());
 
   // Real-time Firebase Authentication & Operator Profile listener
   useEffect(() => {
@@ -56,13 +59,10 @@ export default function App() {
         
         // Listen to operator document in real-time
         unsubscribeProfile = onSnapshot(doc(db, 'operators', user.uid), (docSnap) => {
-          const emailLower = (user.email || '').toLowerCase();
-          const isArmagan = emailLower === 'armagan@joeppli.ch' || emailLower === 'armaganarsln@gmail.com';
-          const isAfra = emailLower === 'afra@joeppli.ch';
+          const adminProject = getAdminProject(user.email);
 
-          if (isArmagan || isAfra) {
-            const adminProject = isArmagan ? 'zurich' : 'glarus';
-            const adminProfile = {
+          if (adminProject) {
+            const adminProfile: OperatorProfile = {
               uid: user.uid,
               email: user.email,
               role: 'admin',
@@ -77,9 +77,9 @@ export default function App() {
             // Auto-heal Firestore if the record is missing or incorrect
             const currentDbData = docSnap.exists() ? docSnap.data() : null;
             if (
-              !currentDbData || 
-              currentDbData.role !== 'admin' || 
-              currentDbData.status !== 'approved' || 
+              !currentDbData ||
+              currentDbData.role !== 'admin' ||
+              currentDbData.status !== 'approved' ||
               currentDbData.project !== adminProject
             ) {
               setDoc(doc(db, 'operators', user.uid), adminProfile, { merge: true })
@@ -87,7 +87,7 @@ export default function App() {
                 .catch(err => console.error("Error healing admin Firestore profile:", err));
             }
           } else if (docSnap.exists()) {
-            const profile = docSnap.data();
+            const profile = docSnap.data() as OperatorProfile;
             setCurrentUserProfile(profile);
             setIsAdmin(profile.role === 'admin');
           } else {
@@ -225,9 +225,11 @@ export default function App() {
           return updated;
         });
 
-        // Trigger battery alerts
+        // Trigger battery alerts — fire once when a vehicle first drops to the
+        // low-battery threshold, and re-arm only after it recharges above 25%.
         newVehicles.forEach(v => {
-          if (v.battery < 20 && v.battery > 19) {
+          if (v.battery <= 20 && !lowBatteryAlertedRef.current.has(v.id)) {
+            lowBatteryAlertedRef.current.add(v.id);
             setAlerts(prev => [
               {
                 id: `batt_${v.id}_${Date.now()}`,
@@ -239,6 +241,8 @@ export default function App() {
               ...prev
             ]);
             if (v.id !== 'v2') v.status = 'alert';
+          } else if (v.battery > 25) {
+            lowBatteryAlertedRef.current.delete(v.id);
           }
         });
 

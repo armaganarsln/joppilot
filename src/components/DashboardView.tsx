@@ -12,6 +12,7 @@ import {
   AreaChart,
   Area
 } from "recharts";
+import type { OperatorProfile } from "../types";
 
 const mockVolume = [
   { name: 'Aug', pet: 120, glass: 80, paper: 200, general: 300 },
@@ -31,7 +32,7 @@ const mockRecyclingRate = [
 ];
 
 interface DashboardViewProps {
-  currentUserProfile?: any;
+  currentUserProfile?: OperatorProfile | null;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({ currentUserProfile }) => {

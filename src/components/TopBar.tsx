@@ -1,13 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Bell, Search, HelpCircle, Plus, LogOut, ShieldCheck, User as UserIcon } from 'lucide-react';
-import { Alert, Vehicle, CollectionRequest } from '../types';
+import { Alert, Vehicle, CollectionRequest, OperatorProfile } from '../types';
+import type { User as FirebaseUser } from 'firebase/auth';
 
 interface TopBarProps {
   alerts: Alert[];
   vehicles: Vehicle[];
   requests: CollectionRequest[];
-  currentUser: any;
-  currentUserProfile?: any;
+  currentUser: FirebaseUser | null;
+  currentUserProfile?: OperatorProfile | null;
   isAdmin: boolean;
   onLogout: () => void;
   onClearAlerts: () => void;

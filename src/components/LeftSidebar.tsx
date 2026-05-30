@@ -13,11 +13,12 @@ import {
   Users,
   MapPin,
 } from "lucide-react";
+import type { OperatorProfile } from "../types";
 
 interface LeftSidebarProps {
   activeTab: string;
   onTabChange: (tab: string) => void;
-  currentUserProfile?: any;
+  currentUserProfile?: OperatorProfile | null;
 }
 
 export const LeftSidebar: React.FC<LeftSidebarProps> = ({
