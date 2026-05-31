@@ -48,6 +48,48 @@ async function startServer() {
     }
   });
 
+  // Returns WebRTC ICE servers (STUN + short-lived Cloudflare TURN credentials)
+  // for teleoperation. The Cloudflare API token never leaves the server; the
+  // client only ever receives time-limited TURN credentials. If TURN is not
+  // configured, falls back to STUN-only so same-network teleop still works.
+  app.get("/api/ice-servers", async (_req, res) => {
+    const stunOnly = [{ urls: "stun:stun.l.google.com:19302" }];
+
+    const keyId = process.env.CLOUDFLARE_TURN_KEY_ID;
+    const apiToken = process.env.CLOUDFLARE_TURN_API_TOKEN;
+    if (!keyId || !apiToken || keyId === "MY_CLOUDFLARE_TURN_KEY_ID") {
+      return res.json({ iceServers: stunOnly });
+    }
+
+    try {
+      const cfResponse = await fetch(
+        `https://rtc.live.cloudflare.com/v1/turn/keys/${keyId}/credentials/generate-ice-servers`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ ttl: 86400 }),
+        }
+      );
+
+      if (!cfResponse.ok) {
+        console.error("Cloudflare TURN request failed:", cfResponse.status, await cfResponse.text());
+        return res.json({ iceServers: stunOnly });
+      }
+
+      const data = await cfResponse.json();
+      // Cloudflare returns { iceServers: { urls: [...], username, credential } }.
+      const cfIce = data.iceServers;
+      const iceServers = Array.isArray(cfIce) ? cfIce : [cfIce];
+      res.json({ iceServers: [...stunOnly, ...iceServers] });
+    } catch (error) {
+      console.error("Error fetching Cloudflare TURN credentials:", error);
+      res.json({ iceServers: stunOnly });
+    }
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

@@ -3,6 +3,7 @@ import { Camera, Compass, Battery, MapPin, AlertOctagon, RotateCcw, Volume2, Tru
 import { doc, onSnapshot, setDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { vehicleName } from '../config/vehicles';
+import { getIceServers } from '../lib/iceServers';
 
 // Minimal typing for the non-standard Battery Status API (not in TS DOM lib).
 interface BatteryManager extends EventTarget {
@@ -128,7 +129,7 @@ export const TestVehicleScreen: React.FC<TestVehicleScreenProps> = ({ onBack }) 
 
         // 2. Setup RTCPeerConnection
         const pc = new RTCPeerConnection({
-          iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+          iceServers: await getIceServers()
         });
         pcRef.current = pc;
 

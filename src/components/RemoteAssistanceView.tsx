@@ -4,6 +4,7 @@ import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Vehicle, WorkspaceProject } from '../types';
 import { vehicleName } from '../config/vehicles';
+import { getIceServers } from '../lib/iceServers';
 
 interface RemoteAssistanceViewProps {
   vehicles: Vehicle[];
@@ -67,7 +68,7 @@ export const RemoteAssistanceView: React.FC<RemoteAssistanceViewProps> = ({ vehi
       if (data.offer && !pcRef.current) {
         try {
           const pc = new RTCPeerConnection({
-            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+            iceServers: await getIceServers()
           });
           pcRef.current = pc;
 

@@ -3,6 +3,7 @@ import { Video, Radio, Camera, AlertTriangle } from 'lucide-react';
 import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { vehicleName } from '../config/vehicles';
+import { getIceServers } from '../lib/iceServers';
 import type { WorkspaceProject } from '../types';
 
 // Cadence at which the operator stamps a liveness heartbeat onto the vehicle
@@ -89,7 +90,7 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
       if (data.offer && !pcRef.current) {
         try {
           const pc = new RTCPeerConnection({
-            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+            iceServers: await getIceServers()
           });
           pcRef.current = pc;
 
