@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Video, Radio, Camera, AlertTriangle, Lock } from 'lucide-react';
+import { Video, Radio, Camera, AlertTriangle, Lock, Octagon, Keyboard, Gamepad2, Hand, Check, X } from 'lucide-react';
 import { doc, onSnapshot, updateDoc, runTransaction } from 'firebase/firestore';
 import { db } from '../firebase';
 import { vehicleName } from '../config/vehicles';
@@ -17,10 +17,30 @@ const CONTROL_WRITE_DEBOUNCE_MS = 80;
 // (e.g. the holding operator's tab crashed), so the vehicle can be reclaimed.
 const CONTROL_LOCK_TIMEOUT_MS = 6000;
 
+// --- Keyboard / gamepad driving model (RD UX #1) ---
+const CONTROL_LOOP_MS = 50;            // 20 Hz input integration loop
+const STEER_MIN = -45;
+const STEER_MAX = 45;
+const STEER_STEP = 3;                  // deg per tick while a steer key is held
+const STEER_CENTER_STEP = 4;           // deg per tick auto-centering on release
+const THROTTLE_STEP = 4;               // % per tick while accelerating
+const THROTTLE_BRAKE_STEP = 8;         // % per tick while braking (key down)
+const THROTTLE_COAST_STEP = 2;         // % per tick decay when no input
+const GAMEPAD_DEADZONE = 0.15;
+
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+interface ControlRequest {
+  sessionId: string;
+  operator: string;
+  at: number;
+}
+
 interface ControlLock {
   sessionId: string;
   operator: string;
   heartbeat: number;
+  request?: ControlRequest | null;
 }
 
 interface TeleoperationViewProps {
@@ -42,6 +62,12 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
   // Email of another operator currently holding the control lock, or null if we
   // hold it / it is free. Drives the lockout overlay and disables the controls.
   const [lockedBy, setLockedBy] = useState<string | null>(null);
+  const [estopEngaged, setEstopEngaged] = useState(false);
+  const [inputMode, setInputMode] = useState<'idle' | 'keyboard' | 'gamepad'>('idle');
+  // When we hold control and another operator requests it, this names them so we
+  // can show the grant/deny banner. When we're locked out, tracks our own pending request.
+  const [incomingRequest, setIncomingRequest] = useState<ControlRequest | null>(null);
+  const [requestPending, setRequestPending] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
@@ -57,6 +83,14 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
   );
   // True while this session owns the control lock (gates all control writes).
   const hasControlRef = useRef(false);
+  // Currently-held keys and the live steering/throttle values the input loop integrates.
+  const keysRef = useRef<Set<string>>(new Set());
+  const steerRef = useRef(0);
+  const throttleRef = useRef(0);
+  const estopRef = useRef(false);
+  // Set when we voluntarily hand control to a requesting operator, so our lock
+  // loop yields instead of immediately re-claiming.
+  const yieldToRef = useRef<string | null>(null);
 
   const displayName = vehicleName(vehicleId, project ?? 'zurich');
   const operatorLabel = operatorEmail ?? 'operator';
@@ -82,6 +116,46 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
       flushControlWrite();
     }, CONTROL_WRITE_DEBOUNCE_MS);
   }, [isTestActive, flushControlWrite]);
+
+  // Emergency stop (RD UX #2): immediately zero controls and trigger a minimal-
+  // risk maneuver, bypassing the debounce. Engaging E-STOP also latches until
+  // explicitly released so a held throttle key can't immediately re-accelerate.
+  const engageEstop = useCallback(() => {
+    estopRef.current = true;
+    setEstopEngaged(true);
+    steerRef.current = 0;
+    throttleRef.current = 0;
+    setSteering(0);
+    setThrottle(0);
+    keysRef.current.clear();
+    if (!isTestActive || !hasControlRef.current) return;
+    commandSeqRef.current += 1;
+    updateDoc(doc(db, 'test_vehicles', vehicleId), {
+      steeringAngle: 0,
+      throttle: 0,
+      avState: 'MRM',
+      operatorCommand: 'WAIT',
+      operatorCommandSeq: commandSeqRef.current,
+      operatorCommandTimestamp: Date.now(),
+      operatorHeartbeat: Date.now(),
+      updatedAt: Date.now(),
+    }).catch(() => {});
+  }, [isTestActive, vehicleId]);
+
+  const releaseEstop = useCallback(() => {
+    estopRef.current = false;
+    setEstopEngaged(false);
+    if (!isTestActive || !hasControlRef.current) return;
+    commandSeqRef.current += 1;
+    updateDoc(doc(db, 'test_vehicles', vehicleId), {
+      avState: 'MANUAL',
+      operatorCommand: 'TAKE_OVER',
+      operatorCommandSeq: commandSeqRef.current,
+      operatorCommandTimestamp: Date.now(),
+      operatorHeartbeat: Date.now(),
+      updatedAt: Date.now(),
+    }).catch(() => {});
+  }, [isTestActive, vehicleId]);
 
   // Listen to the live vehicle document from Firestore
   useEffect(() => {
@@ -120,15 +194,40 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
           const isStale = !current || now - current.heartbeat > CONTROL_LOCK_TIMEOUT_MS;
 
           if (current && !isMine && !isStale) {
-            return { acquired: false, holder: current.operator };
+            // Someone else holds control. If we've queued a request, attach it so
+            // the holder sees it; otherwise just observe. Preserve an existing
+            // request from another operator.
+            const request = requestPending
+              ? { sessionId: mySession, operator: operatorLabel, at: now }
+              : current.request ?? null;
+            tx.set(lockRef, { ...current, request }, { merge: true });
+            return { acquired: false, holder: current.operator, request: current.request ?? null };
           }
-          tx.set(lockRef, { sessionId: mySession, operator: operatorLabel, heartbeat: now });
-          return { acquired: true, holder: operatorLabel };
+
+          // We hold (or can take) the lock. If we've chosen to yield to a
+          // requester, step aside and let their session claim it next tick.
+          if (isMine && yieldToRef.current && current?.request?.sessionId === yieldToRef.current) {
+            tx.delete(lockRef);
+            return { acquired: false, holder: current.request.operator, request: null, yielded: true };
+          }
+
+          const request = isMine ? current?.request ?? null : null;
+          tx.set(lockRef, { sessionId: mySession, operator: operatorLabel, heartbeat: now, request });
+          return { acquired: true, holder: operatorLabel, request };
         });
 
         if (!active) return;
         hasControlRef.current = result.acquired;
         setLockedBy(result.acquired ? null : result.holder);
+        // Surface an incoming request only while WE hold control.
+        setIncomingRequest(
+          result.acquired && result.request && result.request.sessionId !== mySession
+            ? result.request
+            : null
+        );
+        if ((result as { yielded?: boolean }).yielded) {
+          yieldToRef.current = null;
+        }
       } catch {
         // Transient contention/offline — keep prior state and retry next tick.
       }
@@ -151,7 +250,27 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
       }
       hasControlRef.current = false;
     };
-  }, [vehicleId, operatorLabel]);
+  }, [vehicleId, operatorLabel, requestPending]);
+
+  // Locked-out operator asks the current holder for control (RD UX #3).
+  const requestControl = useCallback(() => {
+    setRequestPending(true);
+  }, []);
+
+  // Holder grants control to the requester: stop driving and yield the lock.
+  const grantControl = useCallback(() => {
+    if (incomingRequest) {
+      yieldToRef.current = incomingRequest.sessionId;
+      setIncomingRequest(null);
+    }
+  }, [incomingRequest]);
+
+  // Holder dismisses the request without giving up control.
+  const denyControl = useCallback(async () => {
+    setIncomingRequest(null);
+    if (!hasControlRef.current) return;
+    await updateDoc(doc(db, 'control_locks', vehicleId), { request: null }).catch(() => {});
+  }, [vehicleId]);
 
   // Live WebRTC Signaling Connection with the phone
   useEffect(() => {
@@ -287,14 +406,118 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
     return () => clearInterval(heartbeat);
   }, [isTestActive, vehicleId]);
 
+  // Keyboard + gamepad driving (RD UX #1). Keys/triggers feed a fixed-rate loop
+  // that integrates steering and throttle, auto-centers steering on release, and
+  // lets throttle coast down. Spacebar is the emergency stop (RD UX #2).
+  useEffect(() => {
+    const DRIVE_KEYS = new Set([
+      'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'w', 'a', 's', 'd', ' ',
+    ]);
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      const key = e.key.toLowerCase();
+      if (!DRIVE_KEYS.has(key)) return;
+      e.preventDefault();
+      if (key === ' ') {
+        // Spacebar toggles emergency stop.
+        if (estopRef.current) releaseEstop(); else engageEstop();
+        return;
+      }
+      if (!keysRef.current.has(key)) {
+        keysRef.current.add(key);
+        setInputMode('keyboard');
+      }
+    };
+
+    const onKeyUp = (e: KeyboardEvent) => {
+      keysRef.current.delete(e.key.toLowerCase());
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+
+    const loop = setInterval(() => {
+      const keys = keysRef.current;
+      let steerInput = 0; // -1 left, +1 right
+      let throttleInput = 0; // -1 brake, +1 accelerate
+
+      // Poll gamepad if present (left stick X = steer, RT/LT = throttle/brake).
+      const pads = typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : [];
+      const pad = pads && Array.from(pads).find((p) => p);
+      if (pad) {
+        const stickX = pad.axes[0] ?? 0;
+        if (Math.abs(stickX) > GAMEPAD_DEADZONE) {
+          steerInput = stickX;
+          setInputMode('gamepad');
+        }
+        const rt = pad.buttons[7]?.value ?? 0; // right trigger = accelerate
+        const lt = pad.buttons[6]?.value ?? 0; // left trigger = brake
+        if (rt > GAMEPAD_DEADZONE || lt > GAMEPAD_DEADZONE) {
+          throttleInput = rt - lt;
+          setInputMode('gamepad');
+        }
+        if (pad.buttons[1]?.pressed && !estopRef.current) engageEstop(); // B button = E-STOP
+      }
+
+      // Keyboard overrides/augments.
+      if (keys.has('arrowleft') || keys.has('a')) steerInput = -1;
+      if (keys.has('arrowright') || keys.has('d')) steerInput = 1;
+      if (keys.has('arrowup') || keys.has('w')) throttleInput = 1;
+      if (keys.has('arrowdown') || keys.has('s')) throttleInput = -1;
+
+      if (estopRef.current) {
+        steerRef.current = 0;
+        throttleRef.current = 0;
+      } else {
+        // Steering: move toward input, else auto-center.
+        if (steerInput !== 0) {
+          steerRef.current = clamp(steerRef.current + steerInput * STEER_STEP, STEER_MIN, STEER_MAX);
+        } else if (steerRef.current !== 0) {
+          const dir = steerRef.current > 0 ? -1 : 1;
+          const next = steerRef.current + dir * STEER_CENTER_STEP;
+          steerRef.current = (steerRef.current > 0) === (next > 0) ? next : 0;
+        }
+        // Throttle: accelerate, brake, or coast down.
+        if (throttleInput > 0) {
+          throttleRef.current = clamp(throttleRef.current + THROTTLE_STEP, 0, 100);
+        } else if (throttleInput < 0) {
+          throttleRef.current = clamp(throttleRef.current - THROTTLE_BRAKE_STEP, 0, 100);
+        } else if (throttleRef.current > 0) {
+          throttleRef.current = clamp(throttleRef.current - THROTTLE_COAST_STEP, 0, 100);
+        }
+      }
+
+      const newSteer = Math.round(steerRef.current);
+      const newThrottle = Math.round(throttleRef.current);
+      setSteering((prev) => (prev !== newSteer ? newSteer : prev));
+      setThrottle((prev) => (prev !== newThrottle ? newThrottle : prev));
+
+      if (hasControlRef.current && !estopRef.current) {
+        queueControlWrite({ steeringAngle: newSteer, throttle: newThrottle });
+      }
+    }, CONTROL_LOOP_MS);
+
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+      clearInterval(loop);
+      keysRef.current.clear();
+    };
+  }, [engageEstop, releaseEstop, queueControlWrite]);
+
   // Steering slider — local state updates instantly; writes are debounced.
+  // Also syncs the input-loop ref so keyboard/gamepad and slider stay coherent.
   const handleSteeringChange = (val: number) => {
+    if (estopRef.current) return;
+    steerRef.current = val;
     setSteering(val);
     queueControlWrite({ steeringAngle: val });
   };
 
   // Throttle slider — local state updates instantly; writes are debounced.
   const handleThrottleChange = (val: number) => {
+    if (estopRef.current) return;
+    throttleRef.current = val;
     setThrottle(val);
     queueControlWrite({ throttle: val });
   };
@@ -337,12 +560,53 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
             lock for {displayName}. You are viewing the live feed in read-only mode. Control transfers automatically
             if their session ends or their link drops.
           </p>
-          <button
-            onClick={handleExit}
-            className="mt-8 flex items-center gap-2 px-6 py-3 bg-white/5 hover:bg-white/10 border border-white/15 rounded-xl text-xs font-bold uppercase tracking-widest transition-all"
-          >
-            Exit to Fleet View
-          </button>
+          <div className="mt-8 flex items-center gap-3">
+            <button
+              onClick={requestControl}
+              disabled={requestPending}
+              className={`flex items-center gap-2 px-6 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${
+                requestPending
+                  ? 'bg-joppli-yellow/15 border border-joppli-yellow/30 text-joppli-yellow cursor-default'
+                  : 'bg-joppli-blue hover:bg-joppli-blue/80 text-white'
+              }`}
+            >
+              <Hand className="w-4 h-4" />
+              {requestPending ? 'Request Sent — Awaiting Holder…' : 'Request Control'}
+            </button>
+            <button
+              onClick={handleExit}
+              className="flex items-center gap-2 px-6 py-3 bg-white/5 hover:bg-white/10 border border-white/15 rounded-xl text-xs font-bold uppercase tracking-widest transition-all"
+            >
+              Exit
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Incoming control-request banner — shown to the operator holding control */}
+      {incomingRequest && !lockedBy && (
+        <div className="absolute top-16 inset-x-0 z-[55] flex justify-center px-4 pt-3 pointer-events-none">
+          <div className="pointer-events-auto bg-[#14151b] border border-joppli-blue/40 rounded-2xl shadow-2xl px-5 py-3 flex items-center gap-4 animate-fade-in">
+            <Hand className="w-5 h-5 text-joppli-blue shrink-0" />
+            <div className="normal-case tracking-normal">
+              <p className="text-xs font-bold text-[#f5f5f7]">Control requested</p>
+              <p className="text-[11px] text-white/55 lowercase">{incomingRequest.operator} wants to take over {displayName}</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={denyControl}
+                className="flex items-center gap-1.5 px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-[10px] font-bold uppercase tracking-widest text-white/70 transition-all"
+              >
+                <X className="w-3.5 h-3.5" /> Dismiss
+              </button>
+              <button
+                onClick={grantControl}
+                className="flex items-center gap-1.5 px-3 py-2 bg-joppli-green hover:bg-joppli-green/80 text-joppli-dark rounded-lg text-[10px] font-black uppercase tracking-widest transition-all"
+              >
+                <Check className="w-3.5 h-3.5" /> Hand Over
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -371,6 +635,15 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
                <span className="text-[10px] text-white/50 mb-0.5">Latency</span>
                <span className={`text-xs font-black font-mono ${latency > 250 ? 'text-joppli-red' : 'text-white'}`}>
                  {`${latency.toFixed(0)} ms`}
+               </span>
+             </div>
+             <div className="flex flex-col">
+               <span className="text-[10px] text-white/50 mb-0.5">Input</span>
+               <span className="text-xs font-black flex items-center gap-1.5 text-white/80">
+                 {inputMode === 'gamepad'
+                   ? <><Gamepad2 className="w-3.5 h-3.5 text-joppli-green" /> GAMEPAD</>
+                   : <><Keyboard className="w-3.5 h-3.5 text-joppli-blue" /> WASD / ARROWS</>
+                 }
                </span>
              </div>
           </div>
@@ -407,11 +680,22 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
         )}
 
         {/* HUD Crosshairs */}
-        <div className="absolute inset-0 pointer-events-none z-10 flex items-center justify-center opacity-35">
+        <div className={`absolute inset-0 pointer-events-none z-10 flex items-center justify-center opacity-35 ${estopEngaged ? 'hidden' : ''}`}>
           <div className="w-20 h-px bg-joppli-green"></div>
           <div className="h-20 w-px bg-joppli-green"></div>
           <div className="absolute w-16 h-16 border border-joppli-green rounded-full"></div>
         </div>
+
+        {/* Emergency-stop screen overlay */}
+        {estopEngaged && (
+          <div className="absolute inset-0 z-20 pointer-events-none flex items-center justify-center bg-joppli-red/15 border-4 border-joppli-red animate-pulse">
+            <div className="flex flex-col items-center gap-2 bg-black/60 px-8 py-5 rounded-2xl">
+              <Octagon className="w-12 h-12 text-joppli-red" />
+              <span className="text-2xl font-black tracking-widest text-white">EMERGENCY STOP</span>
+              <span className="text-[10px] text-white/60 normal-case tracking-normal">Vehicle held in minimal-risk maneuver — press Resume or Spacebar to continue</span>
+            </div>
+          </div>
+        )}
 
         {/* Label Placement */}
         <div className="absolute top-20 left-6 bg-black/75 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-white/10 z-20 flex items-center gap-2 shadow-lg">
@@ -491,6 +775,22 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
               </button>
               <span>100% (FULL)</span>
             </div>
+          </div>
+
+          {/* EMERGENCY STOP (RD UX #2) */}
+          <div className="flex flex-col justify-center items-center shrink-0 border-r border-white/10 pr-6 h-full">
+            <button
+              onClick={() => (estopEngaged ? releaseEstop() : engageEstop())}
+              className={`w-24 h-24 rounded-full flex flex-col items-center justify-center gap-1 font-black uppercase tracking-widest text-xs transition-all border-4 shadow-lg ${
+                estopEngaged
+                  ? 'bg-white text-joppli-red border-joppli-red animate-pulse'
+                  : 'bg-joppli-red text-white border-white/80 hover:bg-joppli-red/90 active:scale-95 shadow-joppli-red/30'
+              }`}
+            >
+              <Octagon className="w-6 h-6" />
+              {estopEngaged ? 'Resume' : 'E-Stop'}
+            </button>
+            <span className="text-[8px] text-white/35 font-bold mt-2 tracking-widest">SPACEBAR</span>
           </div>
 
           {/* AUXILIARY BACKUP CHANNELS (FRONT LEFT, REAR, FRONT RIGHT) */}
