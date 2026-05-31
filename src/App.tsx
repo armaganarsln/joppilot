@@ -669,6 +669,7 @@ export default function App() {
         <TeleoperationView
           vehicleId={teleopVehicleId}
           project={currentUserProfile?.project}
+          operatorEmail={currentUser?.email}
           onExit={() => setTeleopVehicleId(null)}
         />
       )}

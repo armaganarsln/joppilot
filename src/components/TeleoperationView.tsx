@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Video, Radio, Camera, AlertTriangle } from 'lucide-react';
-import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
+import { Video, Radio, Camera, AlertTriangle, Lock } from 'lucide-react';
+import { doc, onSnapshot, updateDoc, runTransaction } from 'firebase/firestore';
 import { db } from '../firebase';
 import { vehicleName } from '../config/vehicles';
 import { getIceServers } from '../lib/iceServers';
@@ -13,14 +13,24 @@ const HEARTBEAT_INTERVAL_MS = 1000;
 // Min delay between control writes while dragging a slider, to avoid a Firestore
 // write on every pixel of pointer movement.
 const CONTROL_WRITE_DEBOUNCE_MS = 80;
+// A control lock whose heartbeat is older than this is treated as abandoned
+// (e.g. the holding operator's tab crashed), so the vehicle can be reclaimed.
+const CONTROL_LOCK_TIMEOUT_MS = 6000;
+
+interface ControlLock {
+  sessionId: string;
+  operator: string;
+  heartbeat: number;
+}
 
 interface TeleoperationViewProps {
   vehicleId: string;
   onExit: () => void;
   project?: WorkspaceProject;
+  operatorEmail?: string | null;
 }
 
-export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId, onExit, project }) => {
+export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId, onExit, project, operatorEmail }) => {
   const [latency, setLatency] = useState(42);
   const [speed, setSpeed] = useState(0);
   const [steering, setSteering] = useState(0); // -45 to 45 deg
@@ -29,6 +39,9 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
   const [isTestActive, setIsTestActive] = useState(false);
   const [p2pConnected, setP2pConnected] = useState(false);
   const [linkDegraded, setLinkDegraded] = useState(false);
+  // Email of another operator currently holding the control lock, or null if we
+  // hold it / it is free. Drives the lockout overlay and disables the controls.
+  const [lockedBy, setLockedBy] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
@@ -38,8 +51,15 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
   const commandSeqRef = useRef(0);
   const controlWriteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingControlRef = useRef<{ steeringAngle?: number; throttle?: number }>({});
+  // Unique per tab/session so two windows (even same user) can't both hold control.
+  const sessionIdRef = useRef<string>(
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `s_${Date.now()}_${Math.random()}`
+  );
+  // True while this session owns the control lock (gates all control writes).
+  const hasControlRef = useRef(false);
 
   const displayName = vehicleName(vehicleId, project ?? 'zurich');
+  const operatorLabel = operatorEmail ?? 'operator';
 
   // Debounced write of steering/throttle control inputs to Firestore.
   const flushControlWrite = useCallback(() => {
@@ -54,7 +74,7 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
   }, [vehicleId]);
 
   const queueControlWrite = useCallback((patch: { steeringAngle?: number; throttle?: number }) => {
-    if (!isTestActive) return;
+    if (!isTestActive || !hasControlRef.current) return;
     pendingControlRef.current = { ...pendingControlRef.current, ...patch };
     if (controlWriteTimerRef.current) return;
     controlWriteTimerRef.current = setTimeout(() => {
@@ -79,6 +99,59 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
 
     return () => unsub();
   }, [vehicleId]);
+
+  // Single-operator control lock (RD-7). Atomically claim the vehicle on a
+  // dedicated `control_locks/{vehicleId}` doc so two operators can't drive the
+  // same vehicle. A transaction makes the claim race-free; the lock auto-expires
+  // when its heartbeat goes stale (CONTROL_LOCK_TIMEOUT_MS), so a crashed tab
+  // doesn't strand the vehicle. We then refresh our own heartbeat on a timer.
+  useEffect(() => {
+    const lockRef = doc(db, 'control_locks', vehicleId);
+    const mySession = sessionIdRef.current;
+    let active = true;
+
+    const tryAcquire = async () => {
+      try {
+        const result = await runTransaction(db, async (tx) => {
+          const snap = await tx.get(lockRef);
+          const now = Date.now();
+          const current = snap.exists() ? (snap.data() as ControlLock) : null;
+          const isMine = current?.sessionId === mySession;
+          const isStale = !current || now - current.heartbeat > CONTROL_LOCK_TIMEOUT_MS;
+
+          if (current && !isMine && !isStale) {
+            return { acquired: false, holder: current.operator };
+          }
+          tx.set(lockRef, { sessionId: mySession, operator: operatorLabel, heartbeat: now });
+          return { acquired: true, holder: operatorLabel };
+        });
+
+        if (!active) return;
+        hasControlRef.current = result.acquired;
+        setLockedBy(result.acquired ? null : result.holder);
+      } catch {
+        // Transient contention/offline — keep prior state and retry next tick.
+      }
+    };
+
+    tryAcquire();
+    const interval = setInterval(tryAcquire, HEARTBEAT_INTERVAL_MS);
+
+    return () => {
+      active = false;
+      clearInterval(interval);
+      // Release the lock if we held it, so the next operator can claim instantly.
+      if (hasControlRef.current) {
+        runTransaction(db, async (tx) => {
+          const snap = await tx.get(lockRef);
+          if (snap.exists() && (snap.data() as ControlLock).sessionId === mySession) {
+            tx.delete(lockRef);
+          }
+        }).catch(() => {});
+      }
+      hasControlRef.current = false;
+    };
+  }, [vehicleId, operatorLabel]);
 
   // Live WebRTC Signaling Connection with the phone
   useEffect(() => {
@@ -188,10 +261,13 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
     if (!isTestActive) return;
 
     const heartbeat = setInterval(async () => {
-      await updateDoc(doc(db, 'test_vehicles', vehicleId), {
-        operatorHeartbeat: Date.now(),
-        updatedAt: Date.now(),
-      }).catch(() => {});
+      // Only the controlling operator stamps the vehicle's deadman heartbeat.
+      if (hasControlRef.current) {
+        await updateDoc(doc(db, 'test_vehicles', vehicleId), {
+          operatorHeartbeat: Date.now(),
+          updatedAt: Date.now(),
+        }).catch(() => {});
+      }
 
       const pc = pcRef.current;
       if (pc && pc.connectionState === 'connected') {
@@ -230,7 +306,7 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
       clearTimeout(controlWriteTimerRef.current);
       controlWriteTimerRef.current = null;
     }
-    if (isTestActive) {
+    if (isTestActive && hasControlRef.current) {
       commandSeqRef.current += 1;
       await updateDoc(doc(db, 'test_vehicles', vehicleId), {
         steeringAngle: 0,
@@ -248,7 +324,28 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
 
   return (
     <div className="fixed inset-0 z-50 bg-[#0c0d12] text-white font-sans flex flex-col uppercase tracking-widest overflow-hidden">
-      
+
+      {/* Control-lock lockout: another operator is already driving this vehicle */}
+      {lockedBy && (
+        <div className="absolute inset-0 z-[60] bg-black/80 backdrop-blur-md flex flex-col items-center justify-center text-center p-8">
+          <div className="w-16 h-16 rounded-full bg-joppli-yellow/15 border border-joppli-yellow/30 flex items-center justify-center text-joppli-yellow mb-6">
+            <Lock className="w-8 h-8" />
+          </div>
+          <h2 className="text-xl font-black tracking-widest text-[#f5f5f7]">Vehicle Under Active Control</h2>
+          <p className="mt-3 text-sm text-white/60 font-medium normal-case tracking-normal max-w-sm">
+            <span className="font-bold text-joppli-yellow lowercase">{lockedBy}</span> currently holds the control
+            lock for {displayName}. You are viewing the live feed in read-only mode. Control transfers automatically
+            if their session ends or their link drops.
+          </p>
+          <button
+            onClick={handleExit}
+            className="mt-8 flex items-center gap-2 px-6 py-3 bg-white/5 hover:bg-white/10 border border-white/15 rounded-xl text-xs font-bold uppercase tracking-widest transition-all"
+          >
+            Exit to Fleet View
+          </button>
+        </div>
+      )}
+
       {/* Upper HUD */}
       <div className="h-16 border-b border-white/10 bg-[#14151b]/95 backdrop-blur-md px-6 flex items-center justify-between shrink-0 absolute top-0 w-full z-20">
         <div className="flex items-center gap-6">

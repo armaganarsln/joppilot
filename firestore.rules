@@ -69,6 +69,13 @@ service cloud.firestore {
       allow delete: if isValidId(vehicleId);
     }
 
+    // Teleoperation control lock (single-operator-per-vehicle, RD-7). Open for
+    // the testbed, consistent with the other teleop collections; tighten
+    // alongside test_vehicles/webrtc_signaling when those move behind auth.
+    match /control_locks/{vehicleId} {
+      allow read, write: if isValidId(vehicleId);
+    }
+
     // Operator Profile Collection.
     // role/status are authorization-bearing fields. A regular user may only ever
     // create/keep themselves as a pending 'operator'; elevation to admin or to
