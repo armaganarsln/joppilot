@@ -15,6 +15,8 @@ import {
 import { db } from '../firebase';
 import { collection, query, where, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 import type { OperatorProfile } from '../types';
+import { LoadingState, EmptyState } from './StateViews';
+import { useToast } from './ToastProvider';
 
 interface Contact {
   name: string;
@@ -35,6 +37,7 @@ export const ContactsUsersView: React.FC<ContactsUsersViewProps> = ({ currentUse
   const [searchTerm, setSearchTerm] = useState('');
   const [pendingOperators, setPendingOperators] = useState<PendingOperator[]>([]);
   const [loadingPending, setLoadingPending] = useState(false);
+  const { success: toastSuccess, error: toastError } = useToast();
 
   // Sync real-time pending operators for the admin's project
   useEffect(() => {
@@ -63,22 +66,28 @@ export const ContactsUsersView: React.FC<ContactsUsersViewProps> = ({ currentUse
   }, [currentUserProfile]);
 
   const handleApprove = async (opId: string) => {
+    const op = pendingOperators.find(o => o.id === opId);
     try {
       await updateDoc(doc(db, 'operators', opId), {
         status: 'approved'
       });
+      toastSuccess(`Approved ${op?.email ?? 'operator'} — access granted`);
     } catch (error) {
       console.error("Error approving operator:", error);
+      toastError('Could not approve operator. Please try again.');
     }
   };
 
   const handleReject = async (opId: string) => {
+    const op = pendingOperators.find(o => o.id === opId);
     try {
       await updateDoc(doc(db, 'operators', opId), {
         status: 'rejected'
       });
+      toastError(`Declined access for ${op?.email ?? 'operator'}`);
     } catch (error) {
       console.error("Error rejecting operator:", error);
+      toastError('Could not update operator. Please try again.');
     }
   };
 
@@ -186,25 +195,14 @@ export const ContactsUsersView: React.FC<ContactsUsersViewProps> = ({ currentUse
               </div>
             </div>
 
-            {loadingPending && (
-              <div className="py-12 flex flex-col items-center justify-center text-joppli-dark/40">
-                <div className="w-8 h-8 border-2 border-joppli-blue/20 border-t-joppli-blue rounded-full animate-spin mb-3"></div>
-                <span className="text-xs font-bold uppercase tracking-widest">Syncing queue in real-time...</span>
-              </div>
-            )}
+            {loadingPending && <LoadingState label="Syncing queue in real-time…" />}
 
             {!loadingPending && filteredPending.length === 0 && (
-              <div className="py-16 flex flex-col items-center justify-center text-joppli-dark/40 border border-dashed border-joppli-grey rounded-2xl bg-white/40">
-                <div className="w-12 h-12 rounded-full bg-joppli-green/10 flex items-center justify-center text-joppli-green mb-3">
-                  <ShieldCheck className="w-6 h-6 animate-pulse" />
-                </div>
-                <span className="text-sm font-extrabold uppercase tracking-widest text-joppli-dark/70">
-                  Zero Outstanding Access Requests
-                </span>
-                <p className="text-xs text-joppli-dark/45 uppercase tracking-wider font-bold mt-1">
-                  All applicant requests for {activeProjectLabel} are fully resolved.
-                </p>
-              </div>
+              <EmptyState
+                icon={ShieldCheck}
+                title="Zero Outstanding Access Requests"
+                hint={`All applicant requests for ${activeProjectLabel} are fully resolved.`}
+              />
             )}
 
             {!loadingPending && filteredPending.length > 0 && (

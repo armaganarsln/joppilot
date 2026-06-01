@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Vehicle, CollectionRequest } from '../types';
-import { Battery, Package, MapPin, Truck, Check } from 'lucide-react';
+import { Battery, Package, MapPin, Truck, Check, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 
 interface ListPanelProps {
   vehicles: Vehicle[];
@@ -13,12 +13,48 @@ interface ListPanelProps {
   onRemoteDrive?: (vehicleId: string) => void;
 }
 
-export const ListPanel: React.FC<ListPanelProps> = ({ 
+export const ListPanel: React.FC<ListPanelProps> = ({
   vehicles, requests, mode, onModeChange, selectedVehicleId, onSelectVehicle, onAddToRoute, onRemoteDrive
 }) => {
+  const [collapsed, setCollapsed] = useState(false);
+
+  // Collapsed rail: a thin strip with a reopen button and quick counts, so the
+  // map gets full width on small screens without losing access to the list.
+  if (collapsed) {
+    return (
+      <div className="w-12 bg-white border-r border-joppli-grey flex flex-col items-center py-4 gap-4 shrink-0 z-10">
+        <button
+          onClick={() => setCollapsed(false)}
+          aria-label="Expand list panel"
+          title="Expand list panel"
+          className="w-8 h-8 rounded-lg bg-joppli-grey/50 hover:bg-joppli-grey flex items-center justify-center text-joppli-dark transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-joppli-blue"
+        >
+          <PanelLeftOpen className="w-4 h-4" />
+        </button>
+        <div className="flex flex-col items-center gap-1.5 text-joppli-dark/60" title={`${vehicles.length} vehicles`}>
+          <Truck className="w-4 h-4" />
+          <span className="text-[10px] font-black">{vehicles.length}</span>
+        </div>
+        <div className="flex flex-col items-center gap-1.5 text-joppli-dark/60 relative" title={`${requests.length} tasks`}>
+          <MapPin className="w-4 h-4" />
+          <span className="text-[10px] font-black">{requests.length}</span>
+          {requests.length > 0 && <span className="absolute -top-1 right-0 w-2 h-2 rounded-full bg-joppli-red" />}
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="w-80 bg-white border-r border-joppli-grey flex flex-col h-full shrink-0 z-10 shadow-[4px_0_24px_rgba(0,0,0,0.02)]">
-      <div className="p-4 border-b border-joppli-grey flex gap-2 shrink-0">
+    <div className="w-72 md:w-80 bg-white border-r border-joppli-grey flex flex-col h-full shrink-0 z-10 shadow-[4px_0_24px_rgba(0,0,0,0.02)]">
+      <div className="p-4 border-b border-joppli-grey flex gap-2 shrink-0 items-center">
+        <button
+          onClick={() => setCollapsed(true)}
+          aria-label="Collapse list panel"
+          title="Collapse list panel"
+          className="shrink-0 w-8 h-8 rounded-lg bg-joppli-grey/50 hover:bg-joppli-grey flex items-center justify-center text-joppli-dark transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-joppli-blue"
+        >
+          <PanelLeftClose className="w-4 h-4" />
+        </button>
         <button 
           onClick={() => onModeChange('vehicles')}
           className={`flex-1 py-1.5 text-xs font-bold uppercase tracking-widest rounded-lg transition-colors ${mode === 'vehicles' ? 'bg-joppli-dark text-white' : 'bg-joppli-grey/50 text-joppli-dark/60 hover:bg-joppli-grey'}`}
@@ -40,10 +76,14 @@ export const ListPanel: React.FC<ListPanelProps> = ({
         {mode === 'vehicles' && vehicles.map(v => {
           const isSelected = v.id === selectedVehicleId;
           return (
-            <div 
+            <div
               key={v.id}
               onClick={() => onSelectVehicle(v.id)}
-              className={`p-4 border rounded-xl cursor-pointer transition-all ${isSelected ? 'border-joppli-blue shadow-md' : 'border-joppli-grey hover:border-joppli-dark/20 hover:shadow-sm'}`}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelectVehicle(v.id); } }}
+              role="button"
+              tabIndex={0}
+              aria-pressed={isSelected}
+              className={`p-4 border rounded-xl cursor-pointer transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-joppli-blue focus-visible:ring-offset-1 ${isSelected ? 'border-joppli-blue shadow-md' : 'border-joppli-grey hover:border-joppli-dark/20 hover:shadow-sm'}`}
             >
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">

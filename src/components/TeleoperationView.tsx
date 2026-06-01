@@ -4,6 +4,7 @@ import { doc, onSnapshot, updateDoc, runTransaction } from 'firebase/firestore';
 import { db } from '../firebase';
 import { vehicleName } from '../config/vehicles';
 import { getIceServers } from '../lib/iceServers';
+import { useToast } from './ToastProvider';
 import type { WorkspaceProject } from '../types';
 
 // Cadence at which the operator stamps a liveness heartbeat onto the vehicle
@@ -92,6 +93,8 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
   // loop yields instead of immediately re-claiming.
   const yieldToRef = useRef<string | null>(null);
 
+  const { success: toastSuccess, warning: toastWarning, info: toastInfo } = useToast();
+
   const displayName = vehicleName(vehicleId, project ?? 'zurich');
   const operatorLabel = operatorEmail ?? 'operator';
 
@@ -121,6 +124,7 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
   // risk maneuver, bypassing the debounce. Engaging E-STOP also latches until
   // explicitly released so a held throttle key can't immediately re-accelerate.
   const engageEstop = useCallback(() => {
+    if (!estopRef.current) toastWarning(`EMERGENCY STOP engaged — ${displayName} held`);
     estopRef.current = true;
     setEstopEngaged(true);
     steerRef.current = 0;
@@ -140,7 +144,7 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
       operatorHeartbeat: Date.now(),
       updatedAt: Date.now(),
     }).catch(() => {});
-  }, [isTestActive, vehicleId]);
+  }, [isTestActive, vehicleId, displayName, toastWarning]);
 
   const releaseEstop = useCallback(() => {
     estopRef.current = false;
@@ -217,6 +221,11 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
         });
 
         if (!active) return;
+        // Toast when we gain control after previously being locked out.
+        if (result.acquired && !hasControlRef.current && lockedBy !== null) {
+          toastSuccess(`You now have control of ${displayName}`);
+          setRequestPending(false);
+        }
         hasControlRef.current = result.acquired;
         setLockedBy(result.acquired ? null : result.holder);
         // Surface an incoming request only while WE hold control.
@@ -255,15 +264,17 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
   // Locked-out operator asks the current holder for control (RD UX #3).
   const requestControl = useCallback(() => {
     setRequestPending(true);
-  }, []);
+    toastInfo('Control request sent to the current operator');
+  }, [toastInfo]);
 
   // Holder grants control to the requester: stop driving and yield the lock.
   const grantControl = useCallback(() => {
     if (incomingRequest) {
       yieldToRef.current = incomingRequest.sessionId;
+      toastInfo(`Handing control of ${displayName} to ${incomingRequest.operator}`);
       setIncomingRequest(null);
     }
-  }, [incomingRequest]);
+  }, [incomingRequest, displayName, toastInfo]);
 
   // Holder dismisses the request without giving up control.
   const denyControl = useCallback(async () => {

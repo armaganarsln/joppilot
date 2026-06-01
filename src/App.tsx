@@ -28,6 +28,7 @@ import { collection, onSnapshot, doc, setDoc } from 'firebase/firestore';
 import { db, auth } from './firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { getAdminProject } from './config/access';
+import { useToast } from './components/ToastProvider';
 import { Clock, XCircle, LogOut, ShieldAlert } from 'lucide-react';
 
 export default function App() {
@@ -46,6 +47,7 @@ export default function App() {
   const [listMode, setListMode] = useState<'vehicles' | 'tasks'>('vehicles');
   // Tracks vehicles already flagged for low battery so each only alerts once per drain cycle.
   const lowBatteryAlertedRef = useRef<Set<string>>(new Set());
+  const { success: toastSuccess, error: toastError, info: toastInfo } = useToast();
 
   // Real-time Firebase Authentication & Operator Profile listener
   useEffect(() => {
@@ -292,18 +294,9 @@ export default function App() {
     if (!vehicle) return;
 
     const startLoc = vehicle.route.length > 0 ? vehicle.route[vehicle.route.length - 1] : vehicle.location;
-    
-    // Add calculating alert
-    setAlerts(prev => [
-      {
-        id: `calc_${vehicleId}_${Date.now()}`,
-        message: `Calculating street-accurate route for ${vehicle.name}...`,
-        type: 'info',
-        timestamp: new Date(),
-        read: false
-      },
-      ...prev
-    ]);
+
+    // Transient feedback that routing has started.
+    toastInfo(`Calculating street-accurate route for ${vehicle.name}…`);
 
     const streetPath = await fetchOSRMRoute(startLoc, req.location);
 
@@ -318,11 +311,12 @@ export default function App() {
       return v;
     }));
 
-    // Update alert when route is ready
+    // Confirm the route is ready (toast) and keep a persistent entry in the alert log.
+    toastSuccess(`${vehicle.name} en route to ${req.address}`);
     setAlerts(prev => [
       {
         id: `route_${vehicleId}_${Date.now()}`,
-        message: `Route calculated: ${vehicle.name} is navigating Alt-Wiedikon streets via OpenStreetMap.`,
+        message: `Route calculated: ${vehicle.name} is navigating to ${req.address} via OpenStreetMap.`,
         type: 'info',
         timestamp: new Date(),
         read: false

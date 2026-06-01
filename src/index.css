@@ -17,3 +17,45 @@
 body {
   @apply font-sans bg-joppli-light overflow-hidden text-joppli-dark;
 }
+
+/* Shared animations (referenced as animate-fade-in / animate-fadeIn / animate-shimmer). */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in,
+.animate-fadeIn {
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes shimmer {
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+
+/* Skeleton loading placeholder. */
+.skeleton {
+  background: linear-gradient(90deg, #EDEDED 25%, #F4F4F4 37%, #EDEDED 63%);
+  background-size: 800px 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in,
+  .animate-fadeIn,
+  .skeleton {
+    animation: none;
+  }
+}
+
+/* Visible keyboard-focus ring for interactive elements that don't set their own
+   (a11y, UX #7). Only applies to keyboard focus, not mouse clicks. */
+button:focus-visible,
+a:focus-visible,
+[role="button"]:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--color-joppli-blue);
+  outline-offset: 2px;
+}

@@ -2,6 +2,7 @@ import React from 'react';
 import { Vehicle, CollectionRequest, OperatorProfile } from '../types';
 import { MapContainer, TileLayer, Marker, Polyline, Tooltip, CircleMarker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
+import { Crosshair, Plus, Minus } from 'lucide-react';
 import { LOCATIONS, GLARUS_LOCATIONS } from '../mockData';
 
 interface MapAreaProps {
@@ -70,12 +71,50 @@ const createTrashBinIcon = (material: string) => {
   });
 };
 
+// Recenters the map when the workspace changes (city switch).
 const ChangeMapView: React.FC<{ center: [number, number] }> = ({ center }) => {
   const map = useMap();
   React.useEffect(() => {
     map.setView(center, 15);
   }, [center[0], center[1], map]);
   return null;
+};
+
+// Pans (and gently zooms) to follow the selected vehicle.
+const FollowVehicle: React.FC<{ target: [number, number] | null }> = ({ target }) => {
+  const map = useMap();
+  React.useEffect(() => {
+    if (target) {
+      map.flyTo(target, Math.max(map.getZoom(), 16), { duration: 0.6 });
+    }
+  }, [target?.[0], target?.[1], map]);
+  return null;
+};
+
+// Floating map controls: zoom in/out + recenter on the whole fleet.
+const MapControls: React.FC<{ vehicles: Vehicle[]; fallback: [number, number] }> = ({ vehicles, fallback }) => {
+  const map = useMap();
+
+  const recenterFleet = () => {
+    const pts = vehicles.map((v) => [v.location.lat, v.location.lng] as [number, number]);
+    if (pts.length === 0) {
+      map.flyTo(fallback, 15, { duration: 0.6 });
+    } else if (pts.length === 1) {
+      map.flyTo(pts[0], 15, { duration: 0.6 });
+    } else {
+      map.flyToBounds(L.latLngBounds(pts), { padding: [80, 80], maxZoom: 16, duration: 0.6 });
+    }
+  };
+
+  const btn = 'w-9 h-9 bg-white hover:bg-joppli-light border border-joppli-grey rounded-lg shadow-md flex items-center justify-center text-joppli-dark transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-joppli-blue';
+
+  return (
+    <div className="absolute top-4 right-4 z-[500] flex flex-col gap-2">
+      <button onClick={() => map.zoomIn()} className={btn} aria-label="Zoom in" title="Zoom in"><Plus className="w-4 h-4" /></button>
+      <button onClick={() => map.zoomOut()} className={btn} aria-label="Zoom out" title="Zoom out"><Minus className="w-4 h-4" /></button>
+      <button onClick={recenterFleet} className={btn} aria-label="Recenter on fleet" title="Recenter on fleet"><Crosshair className="w-4 h-4 text-joppli-blue" /></button>
+    </div>
+  );
 };
 
 export const MapArea: React.FC<MapAreaProps> = ({ 
@@ -90,6 +129,11 @@ export const MapArea: React.FC<MapAreaProps> = ({
   const centerLat = isGlarus ? 47.0406 : 47.3712;
   const centerLng = isGlarus ? 9.0682 : 8.5135;
   const activeLocations = isGlarus ? GLARUS_LOCATIONS : LOCATIONS;
+
+  const selectedVehicle = vehicles.find((v) => v.id === selectedVehicleId);
+  const followTarget: [number, number] | null = selectedVehicle
+    ? [selectedVehicle.location.lat, selectedVehicle.location.lng]
+    : null;
 
   return (
     <div className="flex-1 relative overflow-hidden h-full z-0 bg-white">
@@ -115,6 +159,8 @@ export const MapArea: React.FC<MapAreaProps> = ({
         zoomControl={false}
       >
         <ChangeMapView center={[centerLat, centerLng]} />
+        <FollowVehicle target={followTarget} />
+        <MapControls vehicles={vehicles} fallback={[centerLat, centerLng]} />
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
