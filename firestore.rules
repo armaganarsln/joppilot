@@ -7,17 +7,14 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // Path Variable & ID Hardening
-    function isValidId(id) { 
-      return id is string && id.size() <= 128 && id.blacklisted_characters == null && id.matches('^[a-zA-Z0-9_\\-]+$'); 
+    // Path Variable & ID Hardening. The character allow-list regex already
+    // rejects anything unsafe, so no separate blacklist check is needed.
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
-    
-    function incoming() { 
-      return request.resource.data; 
-    }
-    
-    function existing() {
-      return resource.data;
+
+    function incoming() {
+      return request.resource.data;
     }
 
     // Admin allowlist — the single enforcement point for elevated privileges.
