@@ -1,29 +1,35 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { TopBar } from './components/TopBar';
 import { LeftSidebar } from './components/LeftSidebar';
 import { ListPanel } from './components/ListPanel';
-import { MapArea } from './components/MapArea';
-import { DashboardView } from './components/DashboardView';
-import { VehiclesView } from './components/VehiclesView';
-import { VehicleDetailView } from './components/VehicleDetailView';
-import { RemoteAssistanceView } from './components/RemoteAssistanceView';
-import { MissionLogsView } from './components/MissionLogsView';
-import { OddSettingsView } from './components/OddSettingsView';
-import { IssuesView } from './components/IssuesView';
-import { ReportsView } from './components/ReportsView';
-import { InspectionsView } from './components/InspectionsView';
-import { RemindersView } from './components/RemindersView';
-import { ServiceView } from './components/ServiceView';
-import { ChargingEnergyView } from './components/ChargingEnergyView';
-import { ContactsUsersView } from './components/ContactsUsersView';
-import { PartsInventoryView } from './components/PartsInventoryView';
-import { PlacesView } from './components/PlacesView';
 import { ChatBox } from './components/ChatBox';
 import { LoginScreen } from './components/LoginScreen';
-import { TeleoperationView } from './components/TeleoperationView';
+import { LoadingState } from './components/StateViews';
+
+// Heavy / route-level views are code-split so the initial bundle stays small.
+// The map (leaflet), charts (recharts) and WebRTC screens are the biggest
+// dependencies and are only loaded when their tab/overlay is first opened.
+const MapArea = lazy(() => import('./components/MapArea').then(m => ({ default: m.MapArea })));
+const DashboardView = lazy(() => import('./components/DashboardView').then(m => ({ default: m.DashboardView })));
+const VehiclesView = lazy(() => import('./components/VehiclesView').then(m => ({ default: m.VehiclesView })));
+const VehicleDetailView = lazy(() => import('./components/VehicleDetailView').then(m => ({ default: m.VehicleDetailView })));
+const RemoteAssistanceView = lazy(() => import('./components/RemoteAssistanceView').then(m => ({ default: m.RemoteAssistanceView })));
+const MissionLogsView = lazy(() => import('./components/MissionLogsView').then(m => ({ default: m.MissionLogsView })));
+const OddSettingsView = lazy(() => import('./components/OddSettingsView').then(m => ({ default: m.OddSettingsView })));
+const IssuesView = lazy(() => import('./components/IssuesView').then(m => ({ default: m.IssuesView })));
+const ReportsView = lazy(() => import('./components/ReportsView').then(m => ({ default: m.ReportsView })));
+const InspectionsView = lazy(() => import('./components/InspectionsView').then(m => ({ default: m.InspectionsView })));
+const RemindersView = lazy(() => import('./components/RemindersView').then(m => ({ default: m.RemindersView })));
+const ServiceView = lazy(() => import('./components/ServiceView').then(m => ({ default: m.ServiceView })));
+const ChargingEnergyView = lazy(() => import('./components/ChargingEnergyView').then(m => ({ default: m.ChargingEnergyView })));
+const ContactsUsersView = lazy(() => import('./components/ContactsUsersView').then(m => ({ default: m.ContactsUsersView })));
+const PartsInventoryView = lazy(() => import('./components/PartsInventoryView').then(m => ({ default: m.PartsInventoryView })));
+const PlacesView = lazy(() => import('./components/PlacesView').then(m => ({ default: m.PlacesView })));
+const TeleoperationView = lazy(() => import('./components/TeleoperationView').then(m => ({ default: m.TeleoperationView })));
+const TestVehicleScreen = lazy(() => import('./components/TestVehicleScreen').then(m => ({ default: m.TestVehicleScreen })));
+
 import { INITIAL_VEHICLES, INITIAL_REQUESTS, GLARUS_VEHICLES, GLARUS_REQUESTS } from './mockData';
 import { Vehicle, CollectionRequest, Alert, OperatorProfile } from './types';
-import { TestVehicleScreen } from './components/TestVehicleScreen';
 import { collection, onSnapshot, doc, setDoc } from 'firebase/firestore';
 import { db, auth } from './firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
@@ -403,7 +409,11 @@ export default function App() {
   }, []);
 
   if (isSimulatedMode) {
-    return <TestVehicleScreen onBack={() => setIsSimulatedMode(false)} />;
+    return (
+      <Suspense fallback={<div className="min-h-screen bg-black flex items-center justify-center"><LoadingState label="Loading test vehicle…" /></div>}>
+        <TestVehicleScreen onBack={() => setIsSimulatedMode(false)} />
+      </Suspense>
+    );
   }
 
   if (!isAuthenticated) {
@@ -565,6 +575,7 @@ export default function App() {
         />
         
         <main className="flex-1 overflow-hidden flex bg-joppli-light">
+          <Suspense fallback={<div className="flex-1 flex items-center justify-center"><LoadingState label="Loading view…" /></div>}>
           {activeTab === 'dispatch' && (
             <>
               <ListPanel 
@@ -655,17 +666,19 @@ export default function App() {
              <PlacesView />
           )}
 
-
+          </Suspense>
         </main>
       </div>
 
       {teleopVehicleId && (
-        <TeleoperationView
-          vehicleId={teleopVehicleId}
-          project={currentUserProfile?.project}
-          operatorEmail={currentUser?.email}
-          onExit={() => setTeleopVehicleId(null)}
-        />
+        <Suspense fallback={<div className="fixed inset-0 z-50 bg-[#0c0d12] flex items-center justify-center"><LoadingState label="Initializing teleoperation…" /></div>}>
+          <TeleoperationView
+            vehicleId={teleopVehicleId}
+            project={currentUserProfile?.project}
+            operatorEmail={currentUser?.email}
+            onExit={() => setTeleopVehicleId(null)}
+          />
+        </Suspense>
       )}
     </div>
   );

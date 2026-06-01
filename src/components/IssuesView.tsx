@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { AlertCircle, Clock, CheckCircle2, Trash2, Plus, Send, RefreshCw } from 'lucide-react';
+import { useToast } from './ToastProvider';
 
 interface Issue {
   id: string;
@@ -19,6 +20,7 @@ const INITIAL_ISSUES: Issue[] = [
 ];
 
 export const IssuesView: React.FC = () => {
+  const { success: toastSuccess, info: toastInfo } = useToast();
   const [issues, setIssues] = useState<Issue[]>(INITIAL_ISSUES);
   const [activeFilter, setActiveFilter] = useState<'All' | 'Open' | 'Investigating' | 'Resolved'>('All');
   const [isAdding, setIsAdding] = useState(false);
@@ -52,6 +54,7 @@ export const IssuesView: React.FC = () => {
     setIssues([newIssueItem, ...issues]);
     setIsAdding(false);
     setNewTitle('');
+    toastSuccess(`Issue ${newIssueItem.id} logged for ${newIssueItem.vehicle}`);
   };
 
   const cycleStatus = (id: string) => {
@@ -60,6 +63,8 @@ export const IssuesView: React.FC = () => {
         let nextStatus: Issue['status'] = 'open';
         if (issue.status === 'open') nextStatus = 'investigating';
         else if (issue.status === 'investigating') nextStatus = 'resolved';
+        if (nextStatus === 'resolved') toastSuccess(`Issue ${id} marked resolved`);
+        else toastInfo(`Issue ${id} → ${nextStatus}`);
         return { ...issue, status: nextStatus };
       }
       return issue;
@@ -68,6 +73,7 @@ export const IssuesView: React.FC = () => {
 
   const deleteIssue = (id: string) => {
     setIssues(prev => prev.filter(i => i.id !== id));
+    toastInfo(`Issue ${id} deleted`);
   };
 
   const filteredIssues = issues.filter(issue => {

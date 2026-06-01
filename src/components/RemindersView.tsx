@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Bell, CheckCircle2, Clock, AlertCircle, Plus, Calendar, Trash2 } from 'lucide-react';
+import { useToast } from './ToastProvider';
 
 interface Reminder {
   id: string;
@@ -75,6 +76,7 @@ const INITIAL_REMINDERS: Reminder[] = [
 ];
 
 export const RemindersView: React.FC = () => {
+  const { success: toastSuccess, info: toastInfo } = useToast();
   const [reminders, setReminders] = useState<Reminder[]>(INITIAL_REMINDERS);
   const [isAdding, setIsAdding] = useState(false);
   
@@ -89,6 +91,8 @@ export const RemindersView: React.FC = () => {
     setReminders(prev => prev.map(rem => {
       if (rem.id === id) {
         const targetStatus = rem.status === 'COMPLETED' ? 'UPCOMING' : 'COMPLETED';
+        if (targetStatus === 'COMPLETED') toastSuccess(`Reminder "${rem.title}" completed`);
+        else toastInfo(`Reminder "${rem.title}" reopened`);
         return { ...rem, status: targetStatus };
       }
       return rem;
@@ -126,10 +130,12 @@ export const RemindersView: React.FC = () => {
     setNewTitle('');
     setNewDueDate('');
     setNewDesc('');
+    toastSuccess(`Reminder "${newReminderItem.title}" scheduled`);
   };
 
   const deleteReminder = (id: string) => {
     setReminders(prev => prev.filter(r => r.id !== id));
+    toastInfo('Reminder deleted');
   };
 
   return (

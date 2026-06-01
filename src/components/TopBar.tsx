@@ -77,14 +77,14 @@ export const TopBar: React.FC<TopBarProps> = ({
   }
 
   return (
-    <header className="h-16 bg-white border-b border-joppli-grey flex items-center justify-between px-6 shrink-0 z-10 w-full shadow-sm">
-      {/* Search Bar */}
-      <div className="flex items-center gap-4 flex-1">
-        <div className="relative w-[360px]">
+    <header className="h-16 bg-white border-b border-joppli-grey flex items-center justify-between px-4 md:px-6 shrink-0 z-10 w-full shadow-sm">
+      {/* Search Bar — leaves room for the mobile hamburger, hidden on the smallest screens */}
+      <div className="flex items-center gap-4 flex-1 pl-12 md:pl-0">
+        <div className="relative w-full max-w-[360px] hidden sm:block">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-joppli-dark/40" />
-          <input 
-            type="text" 
-            placeholder="Search vehicles, smart bins, incident reports..." 
+          <input
+            type="text"
+            placeholder="Search vehicles, smart bins, incident reports..."
             className="w-full pl-9 pr-4 py-1.5 bg-white border border-joppli-grey rounded-xl text-sm font-semibold text-joppli-dark focus:outline-none focus:border-joppli-blue focus:ring-1 focus:ring-joppli-blue transition-colors placeholder:text-joppli-dark/30 uppercase placeholder:low-case"
           />
         </div>

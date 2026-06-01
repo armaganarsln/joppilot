@@ -4,6 +4,7 @@ import { doc, onSnapshot, updateDoc, runTransaction } from 'firebase/firestore';
 import { db } from '../firebase';
 import { vehicleName } from '../config/vehicles';
 import { getIceServers } from '../lib/iceServers';
+import { stepDrive } from '../lib/driveModel';
 import { useToast } from './ToastProvider';
 import type { WorkspaceProject } from '../types';
 
@@ -19,17 +20,10 @@ const CONTROL_WRITE_DEBOUNCE_MS = 80;
 const CONTROL_LOCK_TIMEOUT_MS = 6000;
 
 // --- Keyboard / gamepad driving model (RD UX #1) ---
+// The steering/throttle integration math lives in ../lib/driveModel (stepDrive),
+// so it can be unit-tested independently of React.
 const CONTROL_LOOP_MS = 50;            // 20 Hz input integration loop
-const STEER_MIN = -45;
-const STEER_MAX = 45;
-const STEER_STEP = 3;                  // deg per tick while a steer key is held
-const STEER_CENTER_STEP = 4;           // deg per tick auto-centering on release
-const THROTTLE_STEP = 4;               // % per tick while accelerating
-const THROTTLE_BRAKE_STEP = 8;         // % per tick while braking (key down)
-const THROTTLE_COAST_STEP = 2;         // % per tick decay when no input
 const GAMEPAD_DEADZONE = 0.15;
-
-const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
 interface ControlRequest {
   sessionId: string;
@@ -476,27 +470,13 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
       if (keys.has('arrowup') || keys.has('w')) throttleInput = 1;
       if (keys.has('arrowdown') || keys.has('s')) throttleInput = -1;
 
-      if (estopRef.current) {
-        steerRef.current = 0;
-        throttleRef.current = 0;
-      } else {
-        // Steering: move toward input, else auto-center.
-        if (steerInput !== 0) {
-          steerRef.current = clamp(steerRef.current + steerInput * STEER_STEP, STEER_MIN, STEER_MAX);
-        } else if (steerRef.current !== 0) {
-          const dir = steerRef.current > 0 ? -1 : 1;
-          const next = steerRef.current + dir * STEER_CENTER_STEP;
-          steerRef.current = (steerRef.current > 0) === (next > 0) ? next : 0;
-        }
-        // Throttle: accelerate, brake, or coast down.
-        if (throttleInput > 0) {
-          throttleRef.current = clamp(throttleRef.current + THROTTLE_STEP, 0, 100);
-        } else if (throttleInput < 0) {
-          throttleRef.current = clamp(throttleRef.current - THROTTLE_BRAKE_STEP, 0, 100);
-        } else if (throttleRef.current > 0) {
-          throttleRef.current = clamp(throttleRef.current - THROTTLE_COAST_STEP, 0, 100);
-        }
-      }
+      // Integrate one control tick using the shared, unit-tested drive model.
+      const next = stepDrive(
+        { steer: steerRef.current, throttle: throttleRef.current },
+        { steerInput, throttleInput, estop: estopRef.current }
+      );
+      steerRef.current = next.steer;
+      throttleRef.current = next.throttle;
 
       const newSteer = Math.round(steerRef.current);
       const newThrottle = Math.round(throttleRef.current);

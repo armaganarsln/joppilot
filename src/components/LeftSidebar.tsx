@@ -13,6 +13,8 @@ import {
   Users,
   MapPin,
 } from "lucide-react";
+import { Menu, X } from "lucide-react";
+import { useState } from "react";
 import type { OperatorProfile } from "../types";
 
 interface LeftSidebarProps {
@@ -26,6 +28,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   onTabChange,
   currentUserProfile,
 }) => {
+  // On small screens the sidebar is an off-canvas drawer toggled by a hamburger.
+  const [mobileOpen, setMobileOpen] = useState(false);
   const isGlarus = currentUserProfile?.project === 'glarus';
   const logoText = isGlarus ? 'GL' : 'ERZ';
   const headerTitle = isGlarus ? 'Jöppli x Glarus' : 'Jöppli x ERZ';
@@ -62,47 +66,84 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
     { id: "reports", label: "Reports", icon: FileText },
   ];
 
-  return (
-    <div className="w-64 bg-joppli-dark text-white flex flex-col h-full shrink-0 font-sans">
-      <div className="p-4 flex items-center justify-between cursor-pointer hover:bg-white/5 transition-colors">
-        <div className="flex items-center gap-3">
-          <div className={`w-10 h-10 rounded-full ${headerLogoBg} flex items-center justify-center overflow-hidden font-black text-xs`}>
-            {logoText}
-          </div>
-          <div className="flex flex-col">
-            <span className="font-bold text-sm">{headerTitle}</span>
-            <span className="text-xs text-white/50">{headerSubtitle}</span>
-          </div>
-        </div>
-        <ChevronDown className="w-4 h-4 text-white/50" />
-      </div>
+  const handleNav = (tab: string) => {
+    onTabChange(tab);
+    setMobileOpen(false); // auto-close the drawer after navigating on mobile
+  };
 
-      <div className="flex-1 overflow-y-auto py-4 flex flex-col px-3 gap-1">
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = activeTab === item.id;
-          return (
-            <button
-              key={item.id}
-              onClick={() => onTabChange(item.id)}
-              className={`flex items-center justify-between w-full px-3 py-2 rounded-lg transition-colors text-sm font-medium ${
-                isActive
-                  ? "bg-joppli-blue text-white"
-                  : "text-[#a2bfdb] hover:bg-white/10 hover:text-white"
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <Icon className="w-4 h-4" />
-                {item.label}
-              </div>
-              {item.hasDropdown && (
-                <ChevronDown className="w-3.5 h-3.5 opacity-50" />
-              )}
-            </button>
-          );
-        })}
+  return (
+    <>
+      {/* Mobile hamburger — only visible below md */}
+      <button
+        onClick={() => setMobileOpen(true)}
+        aria-label="Open navigation menu"
+        className="md:hidden fixed top-3 left-3 z-[1200] w-10 h-10 rounded-lg bg-joppli-dark text-white flex items-center justify-center shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-joppli-blue"
+      >
+        <Menu className="w-5 h-5" />
+      </button>
+
+      {/* Backdrop behind the drawer on mobile */}
+      {mobileOpen && (
+        <div
+          className="md:hidden fixed inset-0 z-[1200] bg-black/50 backdrop-blur-sm"
+          onClick={() => setMobileOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      <div
+        className={`w-64 bg-joppli-dark text-white flex flex-col h-full shrink-0 font-sans z-[1300] transition-transform duration-200
+          max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:shadow-2xl
+          ${mobileOpen ? 'max-md:translate-x-0' : 'max-md:-translate-x-full'}`}
+      >
+        <div className="p-4 flex items-center justify-between cursor-pointer hover:bg-white/5 transition-colors">
+          <div className="flex items-center gap-3">
+            <div className={`w-10 h-10 rounded-full ${headerLogoBg} flex items-center justify-center overflow-hidden font-black text-xs`}>
+              {logoText}
+            </div>
+            <div className="flex flex-col">
+              <span className="font-bold text-sm">{headerTitle}</span>
+              <span className="text-xs text-white/50">{headerSubtitle}</span>
+            </div>
+          </div>
+          {/* Close button on mobile, chevron on desktop */}
+          <button
+            onClick={() => setMobileOpen(false)}
+            aria-label="Close navigation menu"
+            className="md:hidden text-white/60 hover:text-white"
+          >
+            <X className="w-5 h-5" />
+          </button>
+          <ChevronDown className="w-4 h-4 text-white/50 hidden md:block" />
+        </div>
+
+        <div className="flex-1 overflow-y-auto py-4 flex flex-col px-3 gap-1">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => handleNav(item.id)}
+                className={`flex items-center justify-between w-full px-3 py-2 rounded-lg transition-colors text-sm font-medium ${
+                  isActive
+                    ? "bg-joppli-blue text-white"
+                    : "text-[#a2bfdb] hover:bg-white/10 hover:text-white"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <Icon className="w-4 h-4" />
+                  {item.label}
+                </div>
+                {item.hasDropdown && (
+                  <ChevronDown className="w-3.5 h-3.5 opacity-50" />
+                )}
+              </button>
+            );
+          })}
+        </div>
       </div>
-    </div>
+    </>
   );
 };
 
