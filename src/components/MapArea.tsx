@@ -37,7 +37,7 @@ const createVehicleIcon = (vehicle: Vehicle, isSelected: boolean) => {
   
   return L.divIcon({
     html,
-    className: 'bg-transparent border-0',
+    className: 'bg-transparent border-0 vehicle-marker',
     iconSize: [0, 0],
     iconAnchor: [0, 0]
   });
@@ -137,7 +137,7 @@ export const MapArea: React.FC<MapAreaProps> = ({
 
   return (
     <div className="flex-1 relative overflow-hidden h-full z-0 bg-white">
-      {/* Animated route style injected locally */}
+      {/* Animated route style and vehicle transition injected locally */}
       <style dangerouslySetInnerHTML={{__html: `
         @keyframes routeFlow {
           from {
@@ -149,6 +149,16 @@ export const MapArea: React.FC<MapAreaProps> = ({
         }
         .animated-route-line {
           animation: routeFlow 1.2s linear infinite;
+        }
+        .vehicle-marker {
+          transition: transform 1s linear;
+        }
+        /* Disable transitions when Leaflet is zooming or panning to prevent markers from flying across the screen */
+        .leaflet-zoom-anim .vehicle-marker,
+        .leaflet-pan-anim .vehicle-marker,
+        .leaflet-dragging .vehicle-marker,
+        .leaflet-zooming .vehicle-marker {
+          transition: none !important;
         }
       `}} />
 
