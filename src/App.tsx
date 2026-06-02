@@ -35,6 +35,7 @@ import { db, auth } from './firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { getAdminProject } from './config/access';
 import { useToast } from './components/ToastProvider';
+import { PLACES_BY_PROJECT } from './config/places';
 import { Clock, XCircle, LogOut, ShieldAlert } from 'lucide-react';
 
 export default function App() {
@@ -380,6 +381,38 @@ export default function App() {
         const data = docSnap.data();
         if (data.isActive) {
           activeTestVehicles[data.id] = data;
+
+          // Enforce active workspace geofence limits (Zürich vs Glarus)
+          const activeProj = currentUserProfile?.project ?? 'zurich';
+          const bounds = PLACES_BY_PROJECT[activeProj]?.bounds;
+          if (bounds && data.lat && data.lng) {
+            const isOutside = data.lat < bounds.latMin || data.lat > bounds.latMax || data.lng < bounds.lngMin || data.lng > bounds.lngMax;
+            if (isOutside && data.avState !== 'MRM') {
+              // Trigger automatic emergency safety stop in Firestore
+              setDoc(doc(db, 'test_vehicles', data.id), {
+                avState: 'MRM',
+                throttle: 0,
+                steeringAngle: 0,
+                operatorCommand: 'WAIT',
+                operatorCommandTimestamp: Date.now(),
+                updatedAt: Date.now()
+              }, { merge: true }).catch(() => {});
+
+              // Queue system alert warning log
+              setAlerts(prev => [
+                {
+                  id: `geofence_${data.id}_${Date.now()}`,
+                  message: `CRITICAL GEOFENCE VIOLATION: Vehicle ${data.name || data.id} crossed ODD boundary. Emergency MRM engaged.`,
+                  type: 'error',
+                  timestamp: new Date(),
+                  read: false
+                },
+                ...prev
+              ]);
+
+              toastError(`CRITICAL: Geofence violation on ${data.name || data.id}! Safety halt engaged.`);
+            }
+          }
         }
       });
 

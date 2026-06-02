@@ -6,6 +6,7 @@ import { vehicleName } from '../config/vehicles';
 import { getIceServers } from '../lib/iceServers';
 import { stepDrive } from '../lib/driveModel';
 import { useToast } from './ToastProvider';
+import { PLACES_BY_PROJECT } from '../config/places';
 import type { WorkspaceProject } from '../types';
 
 // Cadence at which the operator stamps a liveness heartbeat onto the vehicle
@@ -54,6 +55,10 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
   const [isTestActive, setIsTestActive] = useState(false);
   const [p2pConnected, setP2pConnected] = useState(false);
   const [linkDegraded, setLinkDegraded] = useState(false);
+  const [heading, setHeading] = useState(0);
+  const [lat, setLat] = useState<number | null>(null);
+  const [lng, setLng] = useState<number | null>(null);
+  const [isBraking, setIsBraking] = useState(false);
   // Email of another operator currently holding the control lock, or null if we
   // hold it / it is free. Drives the lockout overlay and disables the controls.
   const [lockedBy, setLockedBy] = useState<string | null>(null);
@@ -164,13 +169,27 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
         setIsTestActive(true);
         setBattery(data.battery);
         setSpeed(data.speed || 0);
+        setHeading(data.heading || 0);
+        setLat(data.lat || null);
+        setLng(data.lng || null);
+
+        // Check geofence violation and force E-stop
+        const activeProj = project ?? 'zurich';
+        const bounds = PLACES_BY_PROJECT[activeProj]?.bounds;
+        if (bounds && data.lat && data.lng) {
+          const isOutside = data.lat < bounds.latMin || data.lat > bounds.latMax || data.lng < bounds.lngMin || data.lng > bounds.lngMax;
+          if (isOutside && !estopRef.current && hasControlRef.current) {
+            engageEstop();
+            toastWarning("GEOFENCE VIOLATION: Automatic Safety Halt engaged!");
+          }
+        }
       } else {
         setIsTestActive(false);
       }
     });
 
     return () => unsub();
-  }, [vehicleId]);
+  }, [vehicleId, project, engageEstop, toastWarning]);
 
   // Single-operator control lock (RD-7). Atomically claim the vehicle on a
   // dedicated `control_locks/{vehicleId}` doc so two operators can't drive the
@@ -470,6 +489,8 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
       if (keys.has('arrowup') || keys.has('w')) throttleInput = 1;
       if (keys.has('arrowdown') || keys.has('s')) throttleInput = -1;
 
+      setIsBraking(throttleInput < 0);
+
       // Integrate one control tick using the shared, unit-tested drive model.
       const next = stepDrive(
         { steer: steerRef.current, throttle: throttleRef.current },
@@ -535,6 +556,76 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
     }
     onExit();
   }, [isTestActive, vehicleId, onExit]);
+
+  const renderCompassTape = () => {
+    // 1 degree = 2.5px. Total width of 360 degrees = 900px.
+    const degreeWidth = 2.5;
+    const translation = -heading * degreeWidth;
+    
+    const tapeMarks = [
+      { deg: 0, label: 'N' }, { deg: 30, label: '30' }, { deg: 60, label: '60' },
+      { deg: 90, label: 'E' }, { deg: 120, label: '120' }, { deg: 150, label: '150' },
+      { deg: 180, label: 'S' }, { deg: 210, label: '210' }, { deg: 240, label: '240' },
+      { deg: 270, label: 'W' }, { deg: 300, label: '300' }, { deg: 330, label: '330' }
+    ];
+
+    // Normalized display direction
+    const displayDir = heading >= 337.5 || heading < 22.5 ? 'N' :
+                       heading >= 22.5 && heading < 67.5 ? 'NE' :
+                       heading >= 67.5 && heading < 112.5 ? 'E' :
+                       heading >= 112.5 && heading < 157.5 ? 'SE' :
+                       heading >= 157.5 && heading < 202.5 ? 'S' :
+                       heading >= 202.5 && heading < 247.5 ? 'SW' :
+                       heading >= 247.5 && heading < 292.5 ? 'W' : 'NW';
+
+    return (
+      <div className="absolute top-20 left-1/2 -translate-x-1/2 z-20 w-80 h-12 bg-black/60 backdrop-blur-sm rounded-xl border border-white/10 flex flex-col items-center justify-between py-1 px-4 overflow-hidden select-none shadow-lg">
+        {/* Active heading read-out */}
+        <span className="text-[11px] font-black font-mono text-joppli-green">
+          {Math.round(heading)}° {displayDir}
+        </span>
+        
+        {/* Moving Tape */}
+        <div className="w-full relative h-5 overflow-hidden flex justify-center">
+          {/* Centered tick pointer */}
+          <div className="absolute top-0 bottom-0 w-px bg-joppli-green z-10"></div>
+          
+          <div 
+            className="flex absolute h-full items-end transition-transform duration-100 ease-out"
+            style={{ 
+              transform: `translateX(${translation}px)`,
+              width: `${360 * degreeWidth}px`
+            }}
+          >
+            {[-1, 0, 1].map((multiplier) => (
+              <div 
+                key={multiplier} 
+                className="absolute flex items-end h-full"
+                style={{ left: `${multiplier * 360 * degreeWidth}px`, width: `${360 * degreeWidth}px` }}
+              >
+                {tapeMarks.map((mark) => (
+                  <div 
+                    key={mark.deg} 
+                    className="absolute flex flex-col items-center justify-end h-full" 
+                    style={{ left: `${mark.deg * degreeWidth}px`, transform: 'translateX(-50%)' }}
+                  >
+                    <span className="text-[8px] font-black font-mono leading-none text-white/50 mb-0.5">{mark.label}</span>
+                    <div className={`w-0.5 ${mark.deg % 90 === 0 ? 'h-2 bg-white/75' : 'h-1 bg-white/30'}`}></div>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const activeProj = project ?? 'zurich';
+  const bounds = PLACES_BY_PROJECT[activeProj]?.bounds;
+  const isGeofenceViolated = !!(bounds && lat !== null && lng !== null && (
+    lat < bounds.latMin || lat > bounds.latMax || lng < bounds.lngMin || lng > bounds.lngMax
+  ));
 
   return (
     <div className="fixed inset-0 z-50 bg-[#0c0d12] text-white font-sans flex flex-col uppercase tracking-widest overflow-hidden">
@@ -670,12 +761,104 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
           <div className="absolute inset-0 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.15)_50%)] bg-[length:100%_4px] pointer-events-none opacity-20 z-10"></div>
         )}
 
-        {/* HUD Crosshairs */}
-        <div className={`absolute inset-0 pointer-events-none z-10 flex items-center justify-center opacity-35 ${estopEngaged ? 'hidden' : ''}`}>
-          <div className="w-20 h-px bg-joppli-green"></div>
-          <div className="h-20 w-px bg-joppli-green"></div>
-          <div className="absolute w-16 h-16 border border-joppli-green rounded-full"></div>
+        {/* Scrolling Compass Tape Overlay */}
+        {isTestActive && renderCompassTape()}
+
+        {/* Dynamic Steering HUD Reticle */}
+        <div className={`absolute inset-0 pointer-events-none z-10 flex items-center justify-center opacity-75 ${estopEngaged ? 'hidden' : ''}`}>
+          {/* Main crosshair lines */}
+          <div className="w-20 h-px bg-white/10"></div>
+          <div className="h-20 w-px bg-white/10"></div>
+          
+          {/* Rotating steering indicator */}
+          <div 
+            className="absolute transition-transform duration-75 ease-out flex items-center justify-center"
+            style={{ transform: `rotate(${steering}deg)` }}
+          >
+            {/* Outer dashed ring */}
+            <div className="w-28 h-28 border-2 border-dashed border-joppli-green/20 rounded-full flex items-center justify-center">
+              {/* Left/Right pitch markers */}
+              <div className="absolute left-0 w-2.5 h-0.5 bg-joppli-green"></div>
+              <div className="absolute right-0 w-2.5 h-0.5 bg-joppli-green"></div>
+              {/* Top pointer */}
+              <div className="absolute top-1.5 w-1 h-2 bg-joppli-green rounded-full shadow-[0_0_8px_rgba(109,186,50,0.4)]"></div>
+            </div>
+            {/* Inner dynamic target indicator */}
+            <div className="w-10 h-10 border border-joppli-green/45 rounded-full flex items-center justify-center shadow-[0_0_8px_rgba(109,186,50,0.2)]">
+              <div className="w-1.5 h-1.5 bg-joppli-green rounded-full shadow-[0_0_6px_rgba(109,186,50,0.8)]"></div>
+            </div>
+          </div>
         </div>
+
+        {/* Left Side: Braking HUD Bar */}
+        {isTestActive && (
+          <div className="absolute left-6 top-1/2 -translate-y-1/2 z-20 flex flex-col items-center gap-2 bg-black/60 backdrop-blur-sm p-3 rounded-xl border border-white/10 shadow-lg select-none">
+            <span className="text-[8px] font-black text-joppli-red tracking-wider">BRAKE</span>
+            <div className="w-3.5 h-32 bg-white/10 rounded-full overflow-hidden flex flex-col justify-end">
+              <div 
+                className="w-full bg-joppli-red rounded-full transition-all duration-100 ease-out"
+                style={{ height: `${isBraking ? 100 : 0}%` }}
+              ></div>
+            </div>
+            <span className="text-[9px] font-mono font-bold text-joppli-red">{isBraking ? 'ON' : 'OFF'}</span>
+          </div>
+        )}
+
+        {/* Right Side: Throttle/Power HUD Bar */}
+        {isTestActive && (
+          <div className="absolute right-6 top-1/2 -translate-y-1/2 z-20 flex flex-col items-center gap-2 bg-black/60 backdrop-blur-sm p-3 rounded-xl border border-white/10 shadow-lg select-none">
+            <span className="text-[8px] font-black text-joppli-blue tracking-wider">POWER</span>
+            <div className="w-3.5 h-32 bg-white/10 rounded-full overflow-hidden flex flex-col justify-end">
+              <div 
+                className="w-full bg-joppli-blue rounded-full transition-all duration-100 ease-out"
+                style={{ height: `${throttle}%` }}
+              ></div>
+            </div>
+            <span className="text-[9px] font-mono font-bold text-joppli-blue">{throttle}%</span>
+          </div>
+        )}
+
+        {/* Geofence violation warning banner */}
+        {isTestActive && isGeofenceViolated && (
+          <div className="absolute top-36 left-1/2 -translate-x-1/2 z-20 bg-joppli-red/90 text-white font-black text-[10px] tracking-widest px-6 py-2.5 rounded-full border border-white/20 shadow-2xl animate-pulse flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            <span>WARNING: ODD GEOFENCE VIOLATION DETECTED</span>
+          </div>
+        )}
+
+        {/* Top-Right HUD Stats & Signal Quality Gauge */}
+        {isTestActive && (
+          <div className="absolute top-20 right-6 bg-black/75 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-white/10 z-20 flex items-center gap-3 shadow-lg font-mono text-[9px] text-white/70 select-none">
+            <div className="flex items-center gap-1">
+              <span>RTT</span>
+              <span className={`font-bold ${latency > 200 ? 'text-joppli-red animate-pulse' : latency > 100 ? 'text-joppli-yellow' : 'text-joppli-green'}`}>
+                {latency.toFixed(0)}ms
+              </span>
+            </div>
+            <div className="w-px h-3 bg-white/20"></div>
+            <div className="flex items-center gap-0.5">
+              {[1, 2, 3, 4, 5].map((bar) => {
+                const active = latency < 300 && (
+                  bar === 1 ||
+                  (bar === 2 && latency < 200) ||
+                  (bar === 3 && latency < 120) ||
+                  (bar === 4 && latency < 80) ||
+                  (bar === 5 && latency < 50)
+                );
+                return (
+                  <div 
+                    key={bar} 
+                    className={`w-0.5 rounded-sm ${active ? 'bg-joppli-green' : 'bg-white/25'}`}
+                    style={{ height: `${bar * 2 + 2}px` }}
+                  ></div>
+                );
+              })}
+            </div>
+            <span className={`font-bold text-[8px] tracking-widest ${latency > 200 ? 'text-joppli-red' : 'text-joppli-green'}`}>
+              {latency > 200 ? 'POOR' : latency > 100 ? 'FAIR' : 'EXCELLENT'}
+            </span>
+          </div>
+        )}
 
         {/* Emergency-stop screen overlay */}
         {estopEngaged && (
