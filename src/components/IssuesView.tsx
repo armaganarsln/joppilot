@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { AlertCircle, Clock, CheckCircle2, Trash2, Plus, Send, RefreshCw } from 'lucide-react';
 import { useToast } from './ToastProvider';
+import { EmptyState } from './StateViews';
 
 interface Issue {
   id: string;
@@ -225,11 +226,13 @@ export const IssuesView: React.FC = () => {
         </div>
 
         {/* Issues List */}
-        <div className="bg-white border border-joppli-grey rounded-xl shadow-sm overflow-hidden flex flex-col">
+        <div className={filteredIssues.length === 0 ? '' : 'bg-white border border-joppli-grey rounded-xl shadow-sm overflow-hidden flex flex-col'}>
           {filteredIssues.length === 0 && (
-            <div className="text-center py-12 text-joppli-dark/40 font-bold text-sm uppercase tracking-wide">
-              No issues found in this state.
-            </div>
+            <EmptyState
+              icon={CheckCircle2}
+              title={activeFilter === 'All' ? 'No issues logged' : `No ${activeFilter.toLowerCase()} issues`}
+              hint={activeFilter === 'All' ? 'The fleet is running clean — new incidents will appear here.' : 'Try a different filter to see other issues.'}
+            />
           )}
 
           {filteredIssues.map((issue, idx) => (

@@ -39,29 +39,14 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   const navItems = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "dispatch", label: "Map & Dispatch", icon: Map },
-    { id: "vehicles", label: "Vehicles", icon: Truck, hasDropdown: true },
-    {
-      id: "inspections",
-      label: "Inspections",
-      icon: CheckCircle,
-      hasDropdown: true,
-    },
-    { id: "issues", label: "Issues", icon: AlertTriangle, hasDropdown: true },
-    { id: "reminders", label: "Reminders", icon: Bell, hasDropdown: true },
-    { id: "service", label: "Service", icon: Wrench, hasDropdown: true },
-    {
-      id: "fuel",
-      label: "Charging & Energy",
-      icon: Droplets,
-      hasDropdown: true,
-    },
-    { id: "users", label: "Contacts & Users", icon: Users, hasDropdown: true },
-    {
-      id: "inventory",
-      label: "Parts & Inventory",
-      icon: Package,
-      hasDropdown: true,
-    },
+    { id: "vehicles", label: "Vehicles", icon: Truck },
+    { id: "inspections", label: "Inspections", icon: CheckCircle },
+    { id: "issues", label: "Issues", icon: AlertTriangle },
+    { id: "reminders", label: "Reminders", icon: Bell },
+    { id: "service", label: "Service", icon: Wrench },
+    { id: "fuel", label: "Charging & Energy", icon: Droplets },
+    { id: "users", label: "Contacts & Users", icon: Users },
+    { id: "inventory", label: "Parts & Inventory", icon: Package },
     { id: "places", label: "Places", icon: MapPin },
     { id: "reports", label: "Reports", icon: FileText },
   ];
@@ -135,9 +120,6 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                   <Icon className="w-4 h-4" />
                   {item.label}
                 </div>
-                {item.hasDropdown && (
-                  <ChevronDown className="w-3.5 h-3.5 opacity-50" />
-                )}
               </button>
             );
           })}

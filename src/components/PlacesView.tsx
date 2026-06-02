@@ -168,7 +168,7 @@ export const PlacesView: React.FC = () => {
     <div className="flex-1 overflow-hidden font-sans flex text-joppli-dark bg-joppli-light">
 
       {/* Places List (Left section) */}
-      <div className="w-96 border-r border-joppli-grey bg-white flex flex-col shrink-0">
+      <div className="w-full max-w-xs sm:w-72 md:w-80 border-r border-joppli-grey bg-white flex flex-col shrink-0">
         <div className="p-4 border-b border-joppli-grey flex items-center gap-2.5">
           <Compass className="w-6 h-6 text-joppli-blue" />
           <div>

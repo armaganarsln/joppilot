@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Bell, Search, HelpCircle, Plus, LogOut, ShieldCheck, User as UserIcon } from 'lucide-react';
+import { Bell, LogOut, ShieldCheck } from 'lucide-react';
 import { Alert, Vehicle, CollectionRequest, OperatorProfile } from '../types';
 import type { User as FirebaseUser } from 'firebase/auth';
 
@@ -78,29 +78,15 @@ export const TopBar: React.FC<TopBarProps> = ({
 
   return (
     <header className="h-16 bg-white border-b border-joppli-grey flex items-center justify-between px-4 md:px-6 shrink-0 z-10 w-full shadow-sm">
-      {/* Search Bar — leaves room for the mobile hamburger, hidden on the smallest screens */}
-      <div className="flex items-center gap-4 flex-1 pl-12 md:pl-0">
-        <div className="relative w-full max-w-[360px] hidden sm:block">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-joppli-dark/40" />
-          <input
-            type="text"
-            placeholder="Search vehicles, smart bins, incident reports..."
-            className="w-full pl-9 pr-4 py-1.5 bg-white border border-joppli-grey rounded-xl text-sm font-semibold text-joppli-dark focus:outline-none focus:border-joppli-blue focus:ring-1 focus:ring-joppli-blue transition-colors placeholder:text-joppli-dark/30 uppercase placeholder:low-case"
-          />
-        </div>
+      {/* Workspace label — leaves room for the mobile hamburger on small screens */}
+      <div className="flex items-center gap-3 flex-1 min-w-0 pl-12 md:pl-0">
+        <span className="text-xs font-black uppercase tracking-widest text-joppli-dark/40 truncate">
+          {currentUserProfile?.project === 'glarus' ? 'Glarus Operations' : 'Stadt Zürich · ERZ'}
+        </span>
       </div>
       
       {/* Utility Actions */}
       <div className="flex items-center gap-3.5 h-full">
-        <button className="w-8 h-8 rounded-full border border-joppli-grey flex items-center justify-center text-joppli-dark hover:bg-joppli-light transition-colors cursor-pointer">
-          <HelpCircle className="w-4 h-4 text-joppli-dark/60" />
-        </button>
-        <button className="w-8 h-8 rounded-full border border-joppli-grey flex items-center justify-center text-joppli-dark hover:bg-joppli-light transition-colors cursor-pointer">
-          <Plus className="w-4 h-4 text-joppli-dark/60" />
-        </button>
-        
-        <div className="h-6 w-px bg-joppli-grey mx-0.5"></div>
-        
         {/* Notifications Alert Popover */}
         <div className="relative" ref={alertsRef}>
           <button 
@@ -118,7 +104,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           {showAlerts && (
             <div className="absolute right-0 mt-3.5 w-85 bg-white border border-joppli-grey rounded-2xl shadow-xl shadow-joppli-dark/5 overflow-hidden z-[100] flex flex-col">
               <div className="px-4 py-3 border-b border-joppli-grey flex items-center justify-between bg-joppli-light">
-                <span className="font-black text-xs uppercase tracking-widest text-joppli-dark/70">System Diagnostics</span>
+                <span className="font-black text-xs uppercase tracking-widest text-joppli-dark/70">Alert History</span>
                 <button 
                   onClick={onClearAlerts} 
                   className="text-[10px] text-joppli-blue hover:underline font-black uppercase tracking-wider"

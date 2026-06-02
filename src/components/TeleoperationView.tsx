@@ -705,8 +705,10 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
         </div>
       </div>
 
-      {/* Operator Cockpit Industrial Bottom Selector Panel */}
-      <div className="absolute bottom-0 inset-x-0 h-36 bg-[#14151b] border-t border-white/10 z-30 flex items-center px-6 gap-6 pb-2 shadow-2xl">
+      {/* Operator Cockpit Industrial Bottom Selector Panel.
+          Scrolls horizontally on narrow screens so the fixed-width control
+          blocks don't clip on tablets. */}
+      <div className="absolute bottom-0 inset-x-0 h-36 bg-[#14151b] border-t border-white/10 z-30 flex items-center px-4 md:px-6 gap-4 md:gap-6 pb-2 shadow-2xl overflow-x-auto">
           
           {/* INTERACTIVE STEERING WHEEL SLIDER CONTROL */}
           <div className="flex flex-col justify-center shrink-0 border-r border-white/10 pr-6 h-full w-56">
