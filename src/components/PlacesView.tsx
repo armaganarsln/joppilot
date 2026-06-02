@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { MapPin, Info, Compass, Award, Clock, Recycle } from 'lucide-react';
 import type { MaterialType, WorkspaceProject } from '../types';
 import { PLACES_BY_PROJECT, type Place, type PlaceType } from '../config/places';
+import { PlacesMap } from './PlacesMap';
 
 interface PlacesViewProps {
   project?: WorkspaceProject;
@@ -23,15 +24,6 @@ const TYPE_LABEL: Record<PlaceType, string> = {
   collection_point: 'Sammelstelle',
   charger: 'Charger',
   odd_geofence: 'ODD Geofence',
-};
-
-// Plots a pin on the schematic map from its real lat/lng within the workspace's
-// geographic bounds (north = top).
-type Bounds = { latMin: number; latMax: number; lngMin: number; lngMax: number };
-const pinPos = (p: Place, bounds: Bounds) => {
-  const left = ((p.lng - bounds.lngMin) / (bounds.lngMax - bounds.lngMin)) * 100;
-  const top = ((bounds.latMax - p.lat) / (bounds.latMax - bounds.latMin)) * 100;
-  return { left: `${Math.min(94, Math.max(6, left))}%`, top: `${Math.min(92, Math.max(8, top))}%` };
 };
 
 const typeIconBg = (type: PlaceType) =>
@@ -56,7 +48,7 @@ const MaterialChips: React.FC<{ materials: MaterialType[]; className?: string }>
 
 export const PlacesView: React.FC<PlacesViewProps> = ({ project = 'zurich' }) => {
   const config = PLACES_BY_PROJECT[project] ?? PLACES_BY_PROJECT.zurich;
-  const { places, bounds, networkLabel, gridLabel } = config;
+  const { places, networkLabel } = config;
   const [selectedId, setSelectedId] = useState<string>(places[0].id);
 
   // When the workspace changes, reset the selection to that city's first place.
@@ -120,58 +112,8 @@ export const PlacesView: React.FC<PlacesViewProps> = ({ project = 'zurich' }) =>
       {/* Main Map Simulation & Details (Right section) */}
       <div className="flex-1 flex flex-col p-6 overflow-y-auto">
 
-        {/* Schematic Mock Radar Map */}
-        <div className="w-full max-w-4xl h-80 bg-[#1e2029] border border-joppli-grey rounded-xl relative overflow-hidden flex items-center justify-center mb-6 shadow-inner">
-          <div className="absolute inset-0 bg-[radial-gradient(#ffffff0a_1px,transparent_1px)] [background-size:16px_16px]"></div>
-
-          {/* Circular radar rings */}
-          <div className="absolute w-[400px] h-[400px] border border-white/[0.04] rounded-full flex items-center justify-center">
-            <div className="w-[250px] h-[250px] border border-white/[0.04] rounded-full flex items-center justify-center">
-              <div className="w-[120px] h-[120px] border border-white/[0.04] rounded-full"></div>
-            </div>
-          </div>
-
-          {/* ODD Geofence outline */}
-          <svg className="absolute inset-0 w-full h-full opacity-30 select-none pointer-events-none" viewBox="0 0 800 320">
-            <polygon
-              points="150,80 350,50 620,130 580,260 280,290 120,220"
-              fill="#6DBA32"
-              fillOpacity="0.1"
-              stroke="#6DBA32"
-              strokeWidth="2"
-              strokeDasharray="4 4"
-            />
-            <text x="30" y="40" fill="#ffffff" fillOpacity="0.3" fontSize="10" fontFamily="monospace">N 47° 22’</text>
-            <text x="30" y="55" fill="#ffffff" fillOpacity="0.3" fontSize="10" fontFamily="monospace">E 8° 31’</text>
-          </svg>
-
-          {/* Place pins positioned from real lat/lng */}
-          {places.map(place => {
-            const isSelected = selectedPlace.id === place.id;
-            return (
-              <button
-                key={place.id}
-                onClick={() => setSelectedPlace(place)}
-                aria-label={place.name}
-                className="absolute transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center group transition-all focus:outline-none"
-                style={pinPos(place, bounds)}
-              >
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center shadow-lg transition-transform ${
-                  isSelected ? 'scale-125 ring-4 ring-joppli-blue' : 'group-hover:scale-110'
-                } ${typeIconBg(place.type)}`}>
-                  {place.type === 'collection_point' ? <Recycle className="w-4 h-4" /> : <MapPin className="w-4.5 h-4.5" />}
-                </div>
-                <span className="mt-1.5 px-2 py-0.5 rounded bg-black/80 font-mono text-[9px] text-white tracking-wider font-extrabold uppercase border border-white/10 shadow whitespace-nowrap">
-                  {place.id}
-                </span>
-              </button>
-            );
-          })}
-
-          <div className="absolute bottom-3 left-4 bg-black/60 backdrop-blur-md border border-white/15 px-3 py-1.5 rounded-lg text-[9px] font-mono text-white/70 uppercase font-black tracking-widest">
-            {gridLabel}
-          </div>
-        </div>
+        {/* Live OpenStreetMap of the workspace's recycling network */}
+        <PlacesMap places={places} selectedId={selectedPlace.id} onSelect={setSelectedPlace} />
 
         {/* Selected Place Details Block */}
         <div className="bg-white border border-joppli-grey rounded-xl shadow-sm p-6 max-w-4xl text-joppli-dark flex flex-col md:flex-row gap-6">

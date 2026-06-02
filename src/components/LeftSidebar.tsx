@@ -16,6 +16,7 @@ import {
 import { Menu, X, Check } from "lucide-react";
 import { useState } from "react";
 import type { OperatorProfile, WorkspaceProject } from "../types";
+import { CantonFlag } from "./CantonFlag";
 
 interface LeftSidebarProps {
   activeTab: string;
@@ -26,9 +27,9 @@ interface LeftSidebarProps {
   onProjectChange?: (project: WorkspaceProject) => void;
 }
 
-const WORKSPACES: { id: WorkspaceProject; logo: string; title: string; subtitle: string }[] = [
-  { id: 'zurich', logo: 'ERZ', title: 'Jöppli x ERZ', subtitle: 'Stadt Zürich' },
-  { id: 'glarus', logo: 'GL', title: 'Jöppli x Glarus', subtitle: 'Glarus Operations' },
+const WORKSPACES: { id: WorkspaceProject; title: string; subtitle: string }[] = [
+  { id: 'zurich', title: 'Jöppli x ERZ', subtitle: 'Stadt Zürich' },
+  { id: 'glarus', title: 'Jöppli x Glarus', subtitle: 'Glarus Operations' },
 ];
 
 export const LeftSidebar: React.FC<LeftSidebarProps> = ({
@@ -46,10 +47,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   // Active workspace = the effective project (switcher override or assigned).
   const activeId: WorkspaceProject = activeProject ?? currentUserProfile?.project ?? 'zurich';
   const isGlarus = activeId === 'glarus';
-  const logoText = isGlarus ? 'GL' : 'ERZ';
   const headerTitle = isGlarus ? 'Jöppli x Glarus' : 'Jöppli x ERZ';
   const headerSubtitle = isGlarus ? 'Glarus Operations' : 'Stadt Zürich';
-  const headerLogoBg = isGlarus ? 'bg-joppli-yellow text-joppli-dark' : 'bg-joppli-blue text-white';
   // Only admins can switch workspaces (operators are scoped to their own city).
   const canSwitch = isAdmin && !!onProjectChange;
 
@@ -109,9 +108,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               title={canSwitch ? 'Switch workspace' : undefined}
               className={`flex items-center gap-3 flex-1 min-w-0 -m-1 p-1 rounded-lg transition-colors ${canSwitch ? 'hover:bg-white/5 cursor-pointer' : 'cursor-default'}`}
             >
-              <div className={`w-10 h-10 rounded-full ${headerLogoBg} flex items-center justify-center overflow-hidden font-black text-xs shrink-0`}>
-                {logoText}
-              </div>
+              <CantonFlag project={activeId} className="w-10 h-10 rounded-lg shrink-0 shadow-sm ring-1 ring-white/10" />
               <div className="flex flex-col items-start min-w-0">
                 <span className="font-bold text-sm truncate">{headerTitle}</span>
                 <span className="text-xs text-white/50 truncate">{headerSubtitle}</span>
@@ -149,9 +146,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                       }}
                       className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors ${selected ? 'bg-white/10' : 'hover:bg-white/5'}`}
                     >
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-[10px] shrink-0 ${ws.id === 'glarus' ? 'bg-joppli-yellow text-joppli-dark' : 'bg-joppli-blue text-white'}`}>
-                        {ws.logo}
-                      </div>
+                      <CantonFlag project={ws.id} className="w-8 h-8 rounded-md shrink-0 shadow-sm ring-1 ring-white/10" />
                       <div className="flex flex-col flex-1 min-w-0">
                         <span className="text-sm font-bold truncate">{ws.title}</span>
                         <span className="text-[10px] text-white/50 truncate">{ws.subtitle}</span>
