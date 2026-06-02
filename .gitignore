@@ -9,3 +9,6 @@ coverage/
 
 # Windows Explorer artifacts
 desktop.ini
+
+# Firebase deploy cache
+.firebase/
