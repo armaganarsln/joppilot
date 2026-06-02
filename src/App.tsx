@@ -29,7 +29,7 @@ const TeleoperationView = lazy(() => import('./components/TeleoperationView').th
 const TestVehicleScreen = lazy(() => import('./components/TestVehicleScreen').then(m => ({ default: m.TestVehicleScreen })));
 
 import { INITIAL_VEHICLES, INITIAL_REQUESTS, GLARUS_VEHICLES, GLARUS_REQUESTS } from './mockData';
-import { Vehicle, CollectionRequest, Alert, OperatorProfile } from './types';
+import { Vehicle, CollectionRequest, Alert, OperatorProfile, WorkspaceProject } from './types';
 import { collection, onSnapshot, doc, setDoc } from 'firebase/firestore';
 import { db, auth } from './firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
@@ -51,6 +51,9 @@ export default function App() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
   const [listMode, setListMode] = useState<'vehicles' | 'tasks'>('vehicles');
+  // Optional manual override of the active city workspace (the header switcher).
+  // Null = follow the operator's own assigned project.
+  const [projectOverride, setProjectOverride] = useState<WorkspaceProject | null>(null);
   // Tracks vehicles already flagged for low battery so each only alerts once per drain cycle.
   const lowBatteryAlertedRef = useRef<Set<string>>(new Set());
   const { success: toastSuccess, error: toastError, info: toastInfo } = useToast();
@@ -135,11 +138,18 @@ export default function App() {
     };
   }, []);
 
+  // The active workspace = manual switcher override if set, else the operator's
+  // assigned project. All workspace-aware views read from this derived profile.
+  const effectiveProject: WorkspaceProject = projectOverride ?? currentUserProfile?.project ?? 'zurich';
+  const effectiveProfile: OperatorProfile | null = currentUserProfile
+    ? { ...currentUserProfile, project: effectiveProject }
+    : null;
+
   // Dynamically switch vehicle, request, and alert configurations between city workspaces
   useEffect(() => {
     if (!currentUserProfile) return;
-    
-    if (currentUserProfile.project === 'glarus') {
+
+    if (effectiveProject === 'glarus') {
       setVehicles(GLARUS_VEHICLES);
       setRequests(GLARUS_REQUESTS);
       setAlerts([
@@ -178,7 +188,10 @@ export default function App() {
         }
       ]);
     }
-  }, [currentUserProfile?.project]);
+    // Reset transient selections when the workspace changes.
+    setSelectedVehicleId(null);
+    setTeleopVehicleId(null);
+  }, [effectiveProject, currentUserProfile]);
 
   useEffect(() => {
 
@@ -558,7 +571,17 @@ export default function App() {
 
   return (
     <div className="h-screen flex font-sans text-joppli-dark selection:bg-joppli-green/20">
-      <LeftSidebar activeTab={activeTab} onTabChange={handleTabChange} currentUserProfile={currentUserProfile} />
+      <LeftSidebar
+        activeTab={activeTab}
+        onTabChange={handleTabChange}
+        currentUserProfile={effectiveProfile}
+        isAdmin={isAdmin}
+        activeProject={effectiveProject}
+        onProjectChange={(p) => {
+          setProjectOverride(p);
+          toastInfo(`Switched to ${p === 'glarus' ? 'Glarus' : 'Zürich (ERZ)'} workspace`);
+        }}
+      />
       
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-white">
         <TopBar 
@@ -566,7 +589,7 @@ export default function App() {
           vehicles={vehicles}
           requests={requests}
           currentUser={currentUser}
-          currentUserProfile={currentUserProfile}
+          currentUserProfile={effectiveProfile}
           isAdmin={isAdmin}
           onLogout={async () => {
             await auth.signOut();
@@ -597,7 +620,7 @@ export default function App() {
                       onSelectVehicle={setSelectedVehicleId} 
                       requests={requests}
                       onAssignRequest={handleAddToRoute}
-                      currentUserProfile={currentUserProfile}
+                      currentUserProfile={effectiveProfile}
                     />
                  </div>
                  
@@ -607,11 +630,11 @@ export default function App() {
           )}
 
           {activeTab === 'dashboard' && (
-             <DashboardView currentUserProfile={currentUserProfile} />
+             <DashboardView currentUserProfile={effectiveProfile} />
           )}
 
           {activeTab === 'assistance' && (
-             <RemoteAssistanceView vehicles={vehicles} project={currentUserProfile?.project} onRemoteDrive={setTeleopVehicleId} />
+             <RemoteAssistanceView vehicles={vehicles} project={effectiveProject} onRemoteDrive={setTeleopVehicleId} />
           )}
 
           {activeTab === 'missions' && (
@@ -655,7 +678,7 @@ export default function App() {
           )}
 
           {activeTab === 'users' && (
-             <ContactsUsersView currentUserProfile={currentUserProfile} />
+             <ContactsUsersView currentUserProfile={effectiveProfile} />
           )}
 
           {activeTab === 'inventory' && (
@@ -674,7 +697,7 @@ export default function App() {
         <Suspense fallback={<div className="fixed inset-0 z-50 bg-[#0c0d12] flex items-center justify-center"><LoadingState label="Initializing teleoperation…" /></div>}>
           <TeleoperationView
             vehicleId={teleopVehicleId}
-            project={currentUserProfile?.project}
+            project={effectiveProject}
             operatorEmail={currentUser?.email}
             onExit={() => setTeleopVehicleId(null)}
           />

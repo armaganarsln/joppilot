@@ -284,7 +284,7 @@ export const ContactsUsersView: React.FC<ContactsUsersViewProps> = ({ currentUse
                 {/* Info details */}
                 <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-start">
-                    <h3 className="font-extrabold text-sm text-joppli-dark truncate uppercase tracking-wide">
+                    <h3 className="font-extrabold text-sm text-joppli-dark truncate tracking-wide">
                       {contact.name}
                     </h3>
                     <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border shrink-0 ${

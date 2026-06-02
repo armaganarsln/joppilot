@@ -13,28 +13,45 @@ import {
   Users,
   MapPin,
 } from "lucide-react";
-import { Menu, X } from "lucide-react";
+import { Menu, X, Check } from "lucide-react";
 import { useState } from "react";
-import type { OperatorProfile } from "../types";
+import type { OperatorProfile, WorkspaceProject } from "../types";
 
 interface LeftSidebarProps {
   activeTab: string;
   onTabChange: (tab: string) => void;
   currentUserProfile?: OperatorProfile | null;
+  isAdmin?: boolean;
+  activeProject?: WorkspaceProject;
+  onProjectChange?: (project: WorkspaceProject) => void;
 }
+
+const WORKSPACES: { id: WorkspaceProject; logo: string; title: string; subtitle: string }[] = [
+  { id: 'zurich', logo: 'ERZ', title: 'Jöppli x ERZ', subtitle: 'Stadt Zürich' },
+  { id: 'glarus', logo: 'GL', title: 'Jöppli x Glarus', subtitle: 'Glarus Operations' },
+];
 
 export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   activeTab,
   onTabChange,
   currentUserProfile,
+  isAdmin = false,
+  activeProject,
+  onProjectChange,
 }) => {
   // On small screens the sidebar is an off-canvas drawer toggled by a hamburger.
   const [mobileOpen, setMobileOpen] = useState(false);
-  const isGlarus = currentUserProfile?.project === 'glarus';
+  // The workspace switcher dropdown (top-left). Only admins may switch cities.
+  const [showWorkspaceMenu, setShowWorkspaceMenu] = useState(false);
+  // Active workspace = the effective project (switcher override or assigned).
+  const activeId: WorkspaceProject = activeProject ?? currentUserProfile?.project ?? 'zurich';
+  const isGlarus = activeId === 'glarus';
   const logoText = isGlarus ? 'GL' : 'ERZ';
   const headerTitle = isGlarus ? 'Jöppli x Glarus' : 'Jöppli x ERZ';
   const headerSubtitle = isGlarus ? 'Glarus Operations' : 'Stadt Zürich';
   const headerLogoBg = isGlarus ? 'bg-joppli-yellow text-joppli-dark' : 'bg-joppli-blue text-white';
+  // Only admins can switch workspaces (operators are scoped to their own city).
+  const canSwitch = isAdmin && !!onProjectChange;
 
   const navItems = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -81,25 +98,71 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
           max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:shadow-2xl
           ${mobileOpen ? 'max-md:translate-x-0' : 'max-md:-translate-x-full'}`}
       >
-        <div className="p-4 flex items-center justify-between cursor-pointer hover:bg-white/5 transition-colors">
-          <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-full ${headerLogoBg} flex items-center justify-center overflow-hidden font-black text-xs`}>
-              {logoText}
-            </div>
-            <div className="flex flex-col">
-              <span className="font-bold text-sm">{headerTitle}</span>
-              <span className="text-xs text-white/50">{headerSubtitle}</span>
-            </div>
+        <div className="relative p-4">
+          <div className="flex items-center justify-between">
+            {/* Workspace switcher button (functional for admins) */}
+            <button
+              onClick={() => canSwitch && setShowWorkspaceMenu(v => !v)}
+              disabled={!canSwitch}
+              aria-haspopup={canSwitch ? 'menu' : undefined}
+              aria-expanded={canSwitch ? showWorkspaceMenu : undefined}
+              title={canSwitch ? 'Switch workspace' : undefined}
+              className={`flex items-center gap-3 flex-1 min-w-0 -m-1 p-1 rounded-lg transition-colors ${canSwitch ? 'hover:bg-white/5 cursor-pointer' : 'cursor-default'}`}
+            >
+              <div className={`w-10 h-10 rounded-full ${headerLogoBg} flex items-center justify-center overflow-hidden font-black text-xs shrink-0`}>
+                {logoText}
+              </div>
+              <div className="flex flex-col items-start min-w-0">
+                <span className="font-bold text-sm truncate">{headerTitle}</span>
+                <span className="text-xs text-white/50 truncate">{headerSubtitle}</span>
+              </div>
+              {canSwitch && (
+                <ChevronDown className={`w-4 h-4 text-white/50 shrink-0 transition-transform ${showWorkspaceMenu ? 'rotate-180' : ''}`} />
+              )}
+            </button>
+
+            {/* Close button on mobile */}
+            <button
+              onClick={() => setMobileOpen(false)}
+              aria-label="Close navigation menu"
+              className="md:hidden text-white/60 hover:text-white ml-2 shrink-0"
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
-          {/* Close button on mobile, chevron on desktop */}
-          <button
-            onClick={() => setMobileOpen(false)}
-            aria-label="Close navigation menu"
-            className="md:hidden text-white/60 hover:text-white"
-          >
-            <X className="w-5 h-5" />
-          </button>
-          <ChevronDown className="w-4 h-4 text-white/50 hidden md:block" />
+
+          {/* Workspace dropdown */}
+          {canSwitch && showWorkspaceMenu && (
+            <>
+              <div className="fixed inset-0 z-[1] " onClick={() => setShowWorkspaceMenu(false)} aria-hidden="true" />
+              <div role="menu" className="absolute left-4 right-4 mt-2 z-[2] bg-[#3a3d4d] border border-white/10 rounded-xl shadow-2xl overflow-hidden">
+                {WORKSPACES.map(ws => {
+                  const selected = ws.id === activeId;
+                  return (
+                    <button
+                      key={ws.id}
+                      role="menuitemradio"
+                      aria-checked={selected}
+                      onClick={() => {
+                        setShowWorkspaceMenu(false);
+                        if (!selected) onProjectChange?.(ws.id);
+                      }}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors ${selected ? 'bg-white/10' : 'hover:bg-white/5'}`}
+                    >
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-[10px] shrink-0 ${ws.id === 'glarus' ? 'bg-joppli-yellow text-joppli-dark' : 'bg-joppli-blue text-white'}`}>
+                        {ws.logo}
+                      </div>
+                      <div className="flex flex-col flex-1 min-w-0">
+                        <span className="text-sm font-bold truncate">{ws.title}</span>
+                        <span className="text-[10px] text-white/50 truncate">{ws.subtitle}</span>
+                      </div>
+                      {selected && <Check className="w-4 h-4 text-joppli-green shrink-0" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto py-4 flex flex-col px-3 gap-1">
