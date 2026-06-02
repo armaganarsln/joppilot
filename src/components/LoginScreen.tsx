@@ -11,6 +11,7 @@ import {
   sendPasswordResetEmail
 } from 'firebase/auth';
 import { provisionOperator } from '../lib/operators';
+import { CantonFlag } from './CantonFlag';
 
 interface LoginScreenProps {
   onLogin: () => void;
@@ -254,21 +255,37 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onEnterTestVe
                   </div>
                 </div>
 
-                {/* Workspace Project Selection (Zürich vs Glarus) */}
+                {/* Workspace Project Selection (Zürich vs Glarus) — flag cards */}
                 <div>
-                  <label htmlFor="workspace" className="block text-xs font-black uppercase tracking-widest text-joppli-dark/70">
+                  <span className="block text-xs font-black uppercase tracking-widest text-joppli-dark/70">
                     Workspace City / Project
-                  </label>
-                  <div className="mt-2">
-                    <select
-                      id="workspace"
-                      value={selectedProject}
-                      onChange={(e) => setSelectedProject(e.target.value as any)}
-                      className="block w-full rounded-xl border border-joppli-grey px-3 py-3 text-sm font-semibold text-joppli-dark focus:border-joppli-blue focus:outline-none focus:ring-1 focus:ring-joppli-blue bg-white transition-colors cursor-pointer"
-                    >
-                      <option value="zurich">Zürich (ERZ Municipal Waste)</option>
-                      <option value="glarus">Glarus (Municipal Waste)</option>
-                    </select>
+                  </span>
+                  <div className="mt-2 grid grid-cols-2 gap-3">
+                    {([
+                      { id: 'zurich' as const, name: 'Zürich', sub: 'ERZ Municipal Waste' },
+                      { id: 'glarus' as const, name: 'Glarus', sub: 'Municipal Waste' },
+                    ]).map((ws) => {
+                      const active = selectedProject === ws.id;
+                      return (
+                        <button
+                          key={ws.id}
+                          type="button"
+                          onClick={() => setSelectedProject(ws.id)}
+                          aria-pressed={active}
+                          className={`flex items-center gap-3 rounded-xl border p-3 text-left transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-joppli-blue ${
+                            active
+                              ? 'border-joppli-blue bg-joppli-blue/5 shadow-sm'
+                              : 'border-joppli-grey hover:border-joppli-dark/20 hover:bg-joppli-light'
+                          }`}
+                        >
+                          <CantonFlag project={ws.id} className="w-9 h-9 rounded-md shrink-0 shadow-sm" />
+                          <span className="flex flex-col min-w-0">
+                            <span className="text-sm font-black text-joppli-dark leading-tight">{ws.name}</span>
+                            <span className="text-[9px] font-bold uppercase tracking-wider text-joppli-dark/45 truncate">{ws.sub}</span>
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               </>

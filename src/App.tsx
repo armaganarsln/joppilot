@@ -686,7 +686,7 @@ export default function App() {
           )}
 
           {activeTab === 'places' && (
-             <PlacesView />
+             <PlacesView project={effectiveProject} />
           )}
 
           </Suspense>

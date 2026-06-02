@@ -1,28 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { MapPin, Info, Compass, Award, Clock, Recycle } from 'lucide-react';
-import type { MaterialType } from '../types';
+import type { MaterialType, WorkspaceProject } from '../types';
+import { PLACES_BY_PROJECT, type Place, type PlaceType } from '../config/places';
 
-// Recycling collection points modeled on the public Swiss Recycling Map
-// (recycling-map.ch) and ERZ "Wertstoff-Sammelstellen" for the Alt-Wiedikon /
-// Kreis 3 district where the Jöppli fleet operates. Location names are real
-// Wiedikon places; GPS coordinates are approximate (the live recycling-map.ch
-// data loads client-side and isn't fetchable server-side), so treat them as
-// operational reference points rather than survey-grade fixes.
-
-type PlaceType = 'depot' | 'drop_off' | 'collection_point' | 'charger' | 'odd_geofence';
-
-interface Place {
-  id: string;
-  name: string;
-  type: PlaceType;
-  lat: number;
-  lng: number;
-  address: string;
-  description: string;
-  materials: MaterialType[];
-  hours?: string;
-  accessCode?: string;
-  meta: string;
+interface PlacesViewProps {
+  project?: WorkspaceProject;
 }
 
 // Tailwind chip colors per material, aligned with the map markers in MapArea.
@@ -43,101 +25,12 @@ const TYPE_LABEL: Record<PlaceType, string> = {
   odd_geofence: 'ODD Geofence',
 };
 
-const SHIFT_PLACES: Place[] = [
-  {
-    id: 'PLC-01',
-    name: 'Jöppli Wiedikon HQ & Depot',
-    type: 'depot',
-    lat: 47.3712,
-    lng: 8.5185,
-    address: 'Birmensdorferstrasse 180, 8003 Zürich',
-    description: 'Primary charging depot, spare-parts warehousing, hardware workshop, and local teleoperator control station.',
-    materials: ['PET', 'glass', 'paper', 'aluminium', 'e-waste', 'textiles'],
-    hours: '24/7 (staffed Mon–Sat 06:00–22:00)',
-    accessCode: 'DE-8003-G2',
-    meta: 'Contains 2 HighPower DC chargers and safety simulators',
-  },
-  {
-    id: 'PLC-02',
-    name: 'ERZ Sammelstelle Schmiede Wiedikon',
-    type: 'drop_off',
-    lat: 47.3705,
-    lng: 8.5170,
-    address: 'Schmiede Wiedikon, 8003 Zürich',
-    description: 'ERZ-managed bulk transfer drop-off with sorting stations and cardboard compactors. Primary hand-off point for full Jöppli loads.',
-    materials: ['PET', 'glass', 'paper', 'aluminium', 'e-waste'],
-    hours: 'Mon–Sat 07:00–20:00',
-    accessCode: 'ERZ-HUB-SWM1',
-    meta: 'PET, glass and electronic-waste collection silos',
-  },
-  {
-    id: 'PLC-03',
-    name: 'Goldbrunnenplatz Wertstoff-Sammelstelle',
-    type: 'collection_point',
-    lat: 47.3686,
-    lng: 8.5118,
-    address: 'Goldbrunnenplatz, 8055 Zürich',
-    description: 'Public ERZ neighbourhood collection point. Unstaffed kerbside containers for household recyclables.',
-    materials: ['glass', 'aluminium', 'textiles'],
-    hours: 'Mon–Sat 07:00–20:00',
-    meta: 'Glass (clear/green/brown), tin & aluminium, textiles bank',
-  },
-  {
-    id: 'PLC-04',
-    name: 'Idaplatz Quartier Collection Point',
-    type: 'collection_point',
-    lat: 47.3672,
-    lng: 8.5145,
-    address: 'Idaplatz, 8003 Zürich',
-    description: 'Square-side neighbourhood Sammelstelle serving the lower Wiedikon residential blocks.',
-    materials: ['glass', 'aluminium', 'PET'],
-    hours: 'Mon–Sat 07:00–20:00',
-    meta: 'Glass and metal banks; seasonal textiles container',
-  },
-  {
-    id: 'PLC-05',
-    name: 'Lochergut Recycling Bank',
-    type: 'collection_point',
-    lat: 47.3745,
-    lng: 8.5165,
-    address: 'Badenerstrasse 230 (Lochergut), 8004 Zürich',
-    description: 'High-density estate collection bank on the northern ODD edge. High PET throughput from surrounding towers.',
-    materials: ['PET', 'glass', 'paper', 'aluminium'],
-    hours: 'Mon–Sat 07:00–20:00',
-    meta: 'High-volume PET and paper; underground glass containers',
-  },
-  {
-    id: 'PLC-06',
-    name: 'Kalkbreite Central Street Chargers',
-    type: 'charger',
-    lat: 47.3728,
-    lng: 8.5154,
-    address: 'Kalkbreitestrasse 10, 8003 Zürich',
-    description: 'Public secondary AC destination charging points with authorized docking protocols for autonomous Jöpplis.',
-    materials: [],
-    hours: '24/7',
-    accessCode: 'EV-ZRH-KB9',
-    meta: '4 × 11 kW AC charging hookups',
-  },
-  {
-    id: 'PLC-07',
-    name: 'Alt-Wiedikon ODD Operational Boundary',
-    type: 'odd_geofence',
-    lat: 47.3700,
-    lng: 8.5140,
-    address: 'Geofenced district range (Alt-Wiedikon)',
-    description: 'Authorized Operating Design Domain (ODD): maximum 30 km/h zones, paved municipal pathways only.',
-    materials: [],
-    meta: 'Area: 1.4 km², maximum safe speed override: 18 km/h',
-  },
-];
-
-// Geographic bounds of the Wiedikon operating area, used to place pins on the
-// schematic map from their real lat/lng (north = top).
-const AREA = { latMin: 47.365, latMax: 47.376, lngMin: 8.508, lngMax: 8.521 };
-const pinPos = (p: Place) => {
-  const left = ((p.lng - AREA.lngMin) / (AREA.lngMax - AREA.lngMin)) * 100;
-  const top = ((AREA.latMax - p.lat) / (AREA.latMax - AREA.latMin)) * 100;
+// Plots a pin on the schematic map from its real lat/lng within the workspace's
+// geographic bounds (north = top).
+type Bounds = { latMin: number; latMax: number; lngMin: number; lngMax: number };
+const pinPos = (p: Place, bounds: Bounds) => {
+  const left = ((p.lng - bounds.lngMin) / (bounds.lngMax - bounds.lngMin)) * 100;
+  const top = ((bounds.latMax - p.lat) / (bounds.latMax - bounds.latMin)) * 100;
   return { left: `${Math.min(94, Math.max(6, left))}%`, top: `${Math.min(92, Math.max(8, top))}%` };
 };
 
@@ -161,8 +54,18 @@ const MaterialChips: React.FC<{ materials: MaterialType[]; className?: string }>
   );
 };
 
-export const PlacesView: React.FC = () => {
-  const [selectedPlace, setSelectedPlace] = useState<Place>(SHIFT_PLACES[0]);
+export const PlacesView: React.FC<PlacesViewProps> = ({ project = 'zurich' }) => {
+  const config = PLACES_BY_PROJECT[project] ?? PLACES_BY_PROJECT.zurich;
+  const { places, bounds, networkLabel, gridLabel } = config;
+  const [selectedId, setSelectedId] = useState<string>(places[0].id);
+
+  // When the workspace changes, reset the selection to that city's first place.
+  useEffect(() => {
+    setSelectedId(places[0].id);
+  }, [project, places]);
+
+  const selectedPlace = places.find(p => p.id === selectedId) ?? places[0];
+  const setSelectedPlace = (p: Place) => setSelectedId(p.id);
 
   return (
     <div className="flex-1 overflow-hidden font-sans flex text-joppli-dark bg-joppli-light">
@@ -173,12 +76,12 @@ export const PlacesView: React.FC = () => {
           <Compass className="w-6 h-6 text-joppli-blue" />
           <div>
             <h1 className="text-base font-black uppercase tracking-wider text-joppli-dark">Places & Geofences</h1>
-            <span className="text-[10px] text-joppli-dark/50 uppercase tracking-widest font-extrabold">Wiedikon Recycling Network · ERZ / Recycling Map</span>
+            <span className="text-[10px] text-joppli-dark/50 uppercase tracking-widest font-extrabold">{networkLabel}</span>
           </div>
         </div>
 
         <div className="flex-1 overflow-y-auto divide-y divide-joppli-grey">
-          {SHIFT_PLACES.map(place => {
+          {places.map(place => {
             const isSelected = selectedPlace.id === place.id;
             return (
               <button
@@ -243,7 +146,7 @@ export const PlacesView: React.FC = () => {
           </svg>
 
           {/* Place pins positioned from real lat/lng */}
-          {SHIFT_PLACES.map(place => {
+          {places.map(place => {
             const isSelected = selectedPlace.id === place.id;
             return (
               <button
@@ -251,7 +154,7 @@ export const PlacesView: React.FC = () => {
                 onClick={() => setSelectedPlace(place)}
                 aria-label={place.name}
                 className="absolute transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center group transition-all focus:outline-none"
-                style={pinPos(place)}
+                style={pinPos(place, bounds)}
               >
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center shadow-lg transition-transform ${
                   isSelected ? 'scale-125 ring-4 ring-joppli-blue' : 'group-hover:scale-110'
@@ -266,7 +169,7 @@ export const PlacesView: React.FC = () => {
           })}
 
           <div className="absolute bottom-3 left-4 bg-black/60 backdrop-blur-md border border-white/15 px-3 py-1.5 rounded-lg text-[9px] font-mono text-white/70 uppercase font-black tracking-widest">
-            Alt-Wiedikon ODD Telemetry Grid
+            {gridLabel}
           </div>
         </div>
 
