@@ -26,7 +26,17 @@ const createVehicleIcon = (vehicle: Vehicle, isSelected: boolean) => {
   const html = `
     <div class="relative w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${bgColor}" style="margin-left: -24px; margin-top: -24px;">
       <div class="transition-transform duration-300 ease-out flex items-center justify-center" style="transform: rotate(${heading}deg);">
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 17h4V5H2v12h3"/><path d="M20 17h2v-3.34a4 4 0 0 0-1.17-2.83L19 9h-5"/><path d="M14 17h1"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="15" y="4" width="4" height="2" rx="1" fill="currentColor" stroke="none" />
+          <rect x="15" y="18" width="4" height="2" rx="1" fill="currentColor" stroke="none" />
+          <rect x="5" y="4" width="5" height="2" rx="1" fill="currentColor" stroke="none" />
+          <rect x="5" y="18" width="5" height="2" rx="1" fill="currentColor" stroke="none" />
+          <line x1="16" y1="6" x2="16" y2="3" stroke="currentColor" stroke-width="1.5" />
+          <line x1="16" y1="18" x2="16" y2="21" stroke="currentColor" stroke-width="1.5" />
+          <rect x="3" y="6" width="10" height="12" rx="1.5" fill="none" stroke="currentColor" stroke-width="2" />
+          <path d="M13 6h4.5C18.93 6 20.5 7.57 20.5 9.5v5c0 1.93-1.57 3.5-3 3.5H13" fill="none" stroke="currentColor" stroke-width="2" />
+          <line x1="17" y1="8" x2="17" y2="16" stroke="currentColor" stroke-width="1.5" />
+        </svg>
       </div>
       ${alertBadge}
       <div class="absolute -bottom-8 whitespace-nowrap px-3 py-1 rounded-full text-[10px] uppercase font-black tracking-widest shadow-lg ${nameBadgeClass}">
