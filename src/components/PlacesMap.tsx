@@ -31,6 +31,35 @@ const placeIcon = (place: Place, isSelected: boolean) => {
   });
 };
 
+// A helper component to handle Leaflet size invalidation when the container resizes
+const ResizeMap: React.FC = () => {
+  const map = useMap();
+
+  React.useEffect(() => {
+    const container = map.getContainer();
+    if (!container) return;
+
+    const resizeObserver = new ResizeObserver(() => {
+      // Invalidate the map size so Leaflet recalculates layout and loads tiles
+      map.invalidateSize();
+    });
+
+    resizeObserver.observe(container);
+
+    // Initial invalidation after mounting to resolve any immediate layout/flex delays
+    const timer = setTimeout(() => {
+      map.invalidateSize();
+    }, 100);
+
+    return () => {
+      resizeObserver.disconnect();
+      clearTimeout(timer);
+    };
+  }, [map]);
+
+  return null;
+};
+
 // Recenters/zooms the map to fit all places whenever the workspace changes.
 const FitBounds: React.FC<{ places: Place[] }> = ({ places }) => {
   const map = useMap();
@@ -60,10 +89,12 @@ export const PlacesMap: React.FC<PlacesMapProps> = ({ places, selectedId, onSele
   return (
     <div className="w-full max-w-4xl h-80 rounded-xl overflow-hidden border border-joppli-grey mb-6 shadow-inner relative z-0">
       <MapContainer center={center} zoom={14} style={{ height: '100%', width: '100%' }} zoomControl={true}>
+        <ResizeMap />
         <FitBounds places={places} />
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+          subdomains="abcd"
         />
 
         {/* ODD operational boundary hint */}

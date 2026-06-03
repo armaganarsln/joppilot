@@ -71,6 +71,35 @@ const createTrashBinIcon = (material: string) => {
   });
 };
 
+// A helper component to handle Leaflet size invalidation when the container resizes
+const ResizeMap: React.FC = () => {
+  const map = useMap();
+
+  React.useEffect(() => {
+    const container = map.getContainer();
+    if (!container) return;
+
+    const resizeObserver = new ResizeObserver(() => {
+      // Invalidate the map size so Leaflet recalculates layout and loads tiles
+      map.invalidateSize();
+    });
+
+    resizeObserver.observe(container);
+
+    // Initial invalidation after mounting to resolve any immediate layout/flex delays
+    const timer = setTimeout(() => {
+      map.invalidateSize();
+    }, 100);
+
+    return () => {
+      resizeObserver.disconnect();
+      clearTimeout(timer);
+    };
+  }, [map]);
+
+  return null;
+};
+
 // Recenters the map when the workspace changes (city switch).
 const ChangeMapView: React.FC<{ center: [number, number] }> = ({ center }) => {
   const map = useMap();
@@ -168,12 +197,14 @@ export const MapArea: React.FC<MapAreaProps> = ({
         style={{ height: '100%', width: '100%', zIndex: 1 }}
         zoomControl={false}
       >
+        <ResizeMap />
         <ChangeMapView center={[centerLat, centerLng]} />
         <FollowVehicle target={followTarget} />
         <MapControls vehicles={vehicles} fallback={[centerLat, centerLng]} />
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+          subdomains="abcd"
         />
 
         {/* Draw stationary locations (Depots, hubs) */}
