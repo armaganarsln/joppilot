@@ -16,30 +16,52 @@ interface MapAreaProps {
 
 // Custom icon using L.divIcon with rotating truck
 const createVehicleIcon = (vehicle: Vehicle, isSelected: boolean) => {
-  const bgColor = isSelected ? 'bg-joppli-blue text-white shadow-xl shadow-joppli-blue/20 scale-110 z-[1000]' : 'bg-white text-joppli-blue border-[3px] border-joppli-blue/30 shadow-md z-[500]';
-  const alertBadge = vehicle.status === 'alert' ? '<span class="absolute -top-1.5 -right-1.5 w-4 h-4 bg-joppli-red rounded-full border-2 border-white animate-pulse shadow-md"></span>' : '';
-  const nameBadgeClass = isSelected ? 'bg-joppli-dark text-white' : 'bg-white text-joppli-dark border border-joppli-grey';
-  
-  // Rotate truck to heading if set, default to 0
   const heading = vehicle.heading || 0;
+  const isAlert = vehicle.status === 'alert';
+  const isOnRoute = vehicle.status === 'on_route';
   
+  // Set badge color based on status (e.g. Jöppli Blue for active/on_route, Red for alert, Slate for idle)
+  let badgeColor = '#4B5563'; 
+  if (isAlert) {
+    badgeColor = '#EF4444'; 
+  } else if (isOnRoute || isSelected) {
+    badgeColor = '#326CB8'; 
+  }
+
+  const nameBadgeClass = isSelected 
+    ? 'bg-joppli-blue text-white ring-2 ring-white/50' 
+    : 'bg-white text-joppli-dark border border-joppli-grey';
+
+  // Pulse rings for Selection or Alert
+  let glowHtml = '';
+  if (isSelected) {
+    glowHtml = `
+      <circle cx="18" cy="18" r="16.5" fill="none" stroke="#326CB8" stroke-width="1.5" stroke-dasharray="3 2" opacity="0.8" />
+    `;
+  } else if (isAlert) {
+    glowHtml = `
+      <circle cx="18" cy="18" r="16.5" fill="none" stroke="#EF4444" stroke-width="1.5" opacity="0.8">
+        <animate attributeName="r" values="14.5;17.5;14.5" dur="1.5s" repeatCount="indefinite" />
+        <animate attributeName="opacity" values="0.8;0.2;0.8" dur="1.5s" repeatCount="indefinite" />
+      </circle>
+    `;
+  }
+
   const html = `
-    <div class="relative w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${bgColor}" style="margin-left: -24px; margin-top: -24px;">
-      <div class="transition-transform duration-300 ease-out flex items-center justify-center" style="transform: rotate(${heading}deg);">
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="15" y="4" width="4" height="2" rx="1" fill="currentColor" stroke="none" />
-          <rect x="15" y="18" width="4" height="2" rx="1" fill="currentColor" stroke="none" />
-          <rect x="5" y="4" width="5" height="2" rx="1" fill="currentColor" stroke="none" />
-          <rect x="5" y="18" width="5" height="2" rx="1" fill="currentColor" stroke="none" />
-          <line x1="16" y1="6" x2="16" y2="3" stroke="currentColor" stroke-width="1.5" />
-          <line x1="16" y1="18" x2="16" y2="21" stroke="currentColor" stroke-width="1.5" />
-          <rect x="3" y="6" width="10" height="12" rx="1.5" fill="none" stroke="currentColor" stroke-width="2" />
-          <path d="M13 6h4.5C18.93 6 20.5 7.57 20.5 9.5v5c0 1.93-1.57 3.5-3 3.5H13" fill="none" stroke="currentColor" stroke-width="2" />
-          <line x1="17" y1="8" x2="17" y2="16" stroke="currentColor" stroke-width="1.5" />
+    <div class="relative w-12 h-12 flex items-center justify-center bg-transparent" style="margin-left: -24px; margin-top: -24px;">
+      <!-- Rotated arrow badge -->
+      <div class="transition-transform duration-300 ease-out flex items-center justify-center" style="transform: rotate(${heading}deg); width: 36px; height: 36px;">
+        <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36" fill="none" style="filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.25));">
+          ${glowHtml}
+          <!-- Outer circle with white border -->
+          <circle cx="18" cy="18" r="13.5" fill="${badgeColor}" stroke="#ffffff" stroke-width="2.5" />
+          <!-- Navigation Arrow (pointing East/Right by default) -->
+          <path d="M23.5 18L13.5 12L15.5 18L13.5 24Z" fill="#ffffff" />
         </svg>
       </div>
-      ${alertBadge}
-      <div class="absolute -bottom-8 whitespace-nowrap px-3 py-1 rounded-full text-[10px] uppercase font-black tracking-widest shadow-lg ${nameBadgeClass}">
+      
+      <!-- Label (Not rotated) -->
+      <div class="absolute -bottom-8 whitespace-nowrap px-2.5 py-1 rounded-full text-[9px] uppercase font-black tracking-widest shadow-md transition-all duration-200 ${nameBadgeClass}">
         ${vehicle.name}
       </div>
     </div>
