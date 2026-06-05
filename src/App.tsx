@@ -59,8 +59,68 @@ export default function App() {
   const lowBatteryAlertedRef = useRef<Set<string>>(new Set());
   const { success: toastSuccess, error: toastError, info: toastInfo } = useToast();
 
+  // Helper to enter demo mode
+  const enterDemoMode = () => {
+    localStorage.setItem('joppilot_demo_session', 'true');
+    const demoProfile: OperatorProfile = {
+      uid: 'demo-operator-uid',
+      email: 'demo-operator@joeppli.ch',
+      role: 'admin',
+      status: 'approved',
+      project: 'zurich',
+      createdAt: new Date().toISOString()
+    };
+    const mockDemoUser = {
+      uid: 'demo-operator-uid',
+      email: 'demo-operator@joeppli.ch',
+      displayName: 'Demo Admin Operator',
+      emailVerified: true
+    } as any;
+    
+    setCurrentUser(mockDemoUser);
+    setCurrentUserProfile(demoProfile);
+    setIsAuthenticated(true);
+    setIsAdmin(true);
+    setIsProfileLoading(false);
+  };
+
+  // Helper to safely clear all auth states
+  const handleLogout = async () => {
+    localStorage.removeItem('joppilot_demo_session');
+    setCurrentUser(null);
+    setCurrentUserProfile(null);
+    setIsAuthenticated(false);
+    setIsAdmin(false);
+    await auth.signOut();
+  };
+
   // Real-time Firebase Authentication & Operator Profile listener
   useEffect(() => {
+    const isDemo = localStorage.getItem('joppilot_demo_session') === 'true';
+    if (isDemo) {
+      const demoProfile: OperatorProfile = {
+        uid: 'demo-operator-uid',
+        email: 'demo-operator@joeppli.ch',
+        role: 'admin',
+        status: 'approved',
+        project: 'zurich',
+        createdAt: new Date().toISOString()
+      };
+      const mockDemoUser = {
+        uid: 'demo-operator-uid',
+        email: 'demo-operator@joeppli.ch',
+        displayName: 'Demo Admin Operator',
+        emailVerified: true
+      } as any;
+      
+      setCurrentUser(mockDemoUser);
+      setCurrentUserProfile(demoProfile);
+      setIsAuthenticated(true);
+      setIsAdmin(true);
+      setIsProfileLoading(false);
+      return;
+    }
+
     let unsubscribeProfile: (() => void) | null = null;
     
     setIsProfileLoading(true);
@@ -466,6 +526,7 @@ export default function App() {
     return (
       <LoginScreen 
         onLogin={() => setIsAuthenticated(true)} 
+        onLoginDemo={enterDemoMode}
         onEnterTestVehicle={() => setIsSimulatedMode(true)} 
       />
     );
@@ -534,9 +595,7 @@ export default function App() {
             </div>
 
             <button
-              onClick={async () => {
-                await auth.signOut();
-              }}
+              onClick={handleLogout}
               className="flex w-full items-center justify-center gap-2 rounded-xl border border-joppli-grey bg-white hover:bg-joppli-red/5 hover:text-joppli-red hover:border-joppli-red/20 px-4 py-3 text-xs font-bold text-joppli-dark uppercase tracking-widest transition-all cursor-pointer"
             >
               <LogOut className="w-4 h-4" />
@@ -588,9 +647,7 @@ export default function App() {
             </div>
 
             <button
-              onClick={async () => {
-                await auth.signOut();
-              }}
+              onClick={handleLogout}
               className="flex w-full items-center justify-center gap-2 rounded-xl border border-transparent bg-joppli-dark text-white hover:bg-joppli-blue px-4 py-3 text-xs font-bold uppercase tracking-widest transition-all cursor-pointer"
             >
               <LogOut className="w-4 h-4" />
@@ -624,9 +681,7 @@ export default function App() {
           currentUser={currentUser}
           currentUserProfile={effectiveProfile}
           isAdmin={isAdmin}
-          onLogout={async () => {
-            await auth.signOut();
-          }}
+          onLogout={handleLogout}
           onClearAlerts={() => setAlerts(prev => prev.map(a => ({ ...a, read: true })))}
         />
         

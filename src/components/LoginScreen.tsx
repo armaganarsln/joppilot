@@ -15,10 +15,11 @@ import { CantonFlag } from './CantonFlag';
 
 interface LoginScreenProps {
   onLogin: () => void;
+  onLoginDemo?: () => void;
   onEnterTestVehicle?: () => void;
 }
 
-export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onEnterTestVehicle }) => {
+export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onLoginDemo, onEnterTestVehicle }) => {
   const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -396,6 +397,20 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onEnterTestVe
                       Trouble signing in? Try Google Redirect
                     </button>
                   </div>
+
+                  {onLoginDemo && (
+                    <div className="pt-2">
+                      <button
+                        type="button"
+                        onClick={onLoginDemo}
+                        disabled={isLoading}
+                        className="flex w-full items-center justify-center gap-3 rounded-xl border border-joppli-green/35 bg-joppli-green/5 hover:bg-joppli-green/10 px-4 py-3 text-sm font-black text-joppli-green shadow-sm transition-all cursor-pointer uppercase tracking-widest"
+                      >
+                        <User className="w-5 h-5 text-joppli-green" />
+                        Access via Demo Mode
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
