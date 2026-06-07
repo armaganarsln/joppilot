@@ -28,7 +28,7 @@ const INITIAL_REMINDERS: Reminder[] = [
     vehicle: 'JÖP-02',
     dueDate: '2026-05-28',
     status: 'DUE SOON',
-    responsible: 'Robert Watkins',
+    responsible: 'Robert Rüegg',
     description: 'Hardware precision alignment on JÖP-02. Needs backup verification on Alt-Wiedikon test track.'
   },
   {
@@ -45,7 +45,7 @@ const INITIAL_REMINDERS: Reminder[] = [
     title: 'ERZ Monthly Sustainability Performance Report',
     dueDate: '2026-05-31',
     status: 'UPCOMING',
-    responsible: 'Sarah Oconnor',
+    responsible: 'Selin Yılmaz',
     description: 'Aggregate bin clearance ratios, e-waste/PET sorting accuracy analytics for Stadt Zürich.'
   },
   {
@@ -61,7 +61,7 @@ const INITIAL_REMINDERS: Reminder[] = [
     title: 'Safety Operator License & Renewal',
     dueDate: '2026-06-01',
     status: 'UPCOMING',
-    responsible: 'Mike Chen',
+    responsible: 'Marc Steiner',
     description: 'Recertification hours on simulator control system required for remote pilot backup.'
   },
   {

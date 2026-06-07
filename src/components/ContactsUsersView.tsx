@@ -94,11 +94,11 @@ export const ContactsUsersView: React.FC<ContactsUsersViewProps> = ({ currentUse
   const contactsData: Record<'operators' | 'safety' | 'erz' | 'hardware', Contact[]> = {
     operators: [
       { name: 'Armağan Arslan', role: 'Founding Operator / Tech Lead', email: 'armaganarsln@gmail.com', permissions: 'System Admin', lastActive: 'Active Now' },
-      { name: 'Sarah Oconnor', role: 'Senior Dispatcher', email: 'sarah.o@erz.zuerich.ch', permissions: 'Fleet Controller', lastActive: '12 mins ago' },
-      { name: 'Mike Chen', role: 'Support Controller', email: 'mike.chen@joppli.com', permissions: 'Fleet Controller', lastActive: '2 hours ago' }
+      { name: 'Selin Yılmaz', role: 'Senior Dispatcher', email: 'selin.y@erz.zuerich.ch', permissions: 'Fleet Controller', lastActive: '12 mins ago' },
+      { name: 'Marc Steiner', role: 'Support Controller', email: 'marc.steiner@joppli.com', permissions: 'Fleet Controller', lastActive: '2 hours ago' }
     ],
     safety: [
-      { name: 'Robert Watkins', role: 'Safety Backup Operator', email: 'robert.w@joppli.com', permissions: 'Field Operator', lastActive: '2 days ago' },
+      { name: 'Robert Rüegg', role: 'Safety Backup Operator', email: 'robert.r@joppli.com', permissions: 'Field Operator', lastActive: '2 days ago' },
       { name: 'Beat Meyer', role: 'Depot Fleet Operations Coordinator', email: 'beat.meyer@erz.zuerich.ch', permissions: 'System Admin', lastActive: '4 hours ago' }
     ],
     erz: [

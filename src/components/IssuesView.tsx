@@ -14,10 +14,10 @@ interface Issue {
 }
 
 const INITIAL_ISSUES: Issue[] = [
-  { id: 'ISS-160312', title: 'Suspension squeak on rear axle', vehicle: 'JÖP-02', status: 'open', priority: 'medium', reporter: 'Robert Watkins', date: '2 hours ago' },
+  { id: 'ISS-160312', title: 'Suspension squeak on rear axle', vehicle: 'JÖP-02', status: 'open', priority: 'medium', reporter: 'Robert Rüegg', date: '2 hours ago' },
   { id: 'ISS-160311', title: 'Battery draining faster than usual', vehicle: 'JÖP-01', status: 'investigating', priority: 'high', reporter: 'System Alert', date: '1 day ago' },
-  { id: 'ISS-160309', title: 'Scratched side panel from tight turn', vehicle: 'JÖP-01', status: 'open', priority: 'low', reporter: 'Sarah Oconnor', date: '2 days ago' },
-  { id: 'ISS-160288', title: 'Navigation system losing GPS signal', vehicle: 'JÖP-02', status: 'resolved', priority: 'high', reporter: 'Mike Chen', date: '5 days ago' },
+  { id: 'ISS-160309', title: 'Scratched side panel from tight turn', vehicle: 'JÖP-01', status: 'open', priority: 'low', reporter: 'Selin Yılmaz', date: '2 days ago' },
+  { id: 'ISS-160288', title: 'Navigation system losing GPS signal', vehicle: 'JÖP-02', status: 'resolved', priority: 'high', reporter: 'Marc Steiner', date: '5 days ago' },
 ];
 
 export const IssuesView: React.FC = () => {

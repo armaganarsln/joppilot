@@ -38,7 +38,7 @@ const INITIAL_INSPECTIONS: Inspection[] = [
     id: 'INSP-2026-003',
     date: '2026-05-22 17:45',
     vehicle: 'JÖP-02',
-    operator: 'Robert Watkins',
+    operator: 'Robert Rüegg',
     status: 'FLAGGED',
     duration: '15 min',
     checklist: {
@@ -70,7 +70,7 @@ const INITIAL_INSPECTIONS: Inspection[] = [
     id: 'INSP-2026-001',
     date: '2026-05-21 06:10',
     vehicle: 'JÖP-02',
-    operator: 'Sarah Oconnor',
+    operator: 'Selin Yılmaz',
     status: 'FAILED',
     duration: '18 min',
     checklist: {
