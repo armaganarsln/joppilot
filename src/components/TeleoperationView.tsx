@@ -733,7 +733,7 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
 
         <button
           onClick={handleExit}
-          className="flex items-center gap-2 px-5 py-2 bg-white/5 hover:bg-joppli-red border border-white/10 hover:border-joppli-red rounded-lg text-xs font-bold transition-all shrink-0 uppercase tracking-widest"
+          className="flex items-center gap-2 px-5 py-2 bg-white/5 hover:bg-joppli-red border border-white/10 hover:border-joppli-red rounded-lg text-xs font-bold transition-all btn-tactile shrink-0 uppercase tracking-widest"
         >
           End Teleop Session
         </button>
@@ -792,7 +792,7 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
 
         {/* Left Side: Braking HUD Bar */}
         {isTestActive && (
-          <div className="absolute left-6 top-1/2 -translate-y-1/2 z-20 flex flex-col items-center gap-2 bg-black/60 backdrop-blur-sm p-3 rounded-xl border border-white/10 shadow-lg select-none">
+          <div className="absolute left-6 top-1/2 -translate-y-1/2 z-20 flex flex-col items-center gap-2 bg-black/60 backdrop-blur-sm p-3 rounded-2xl border border-white/10 shadow-lg select-none">
             <span className="text-[8px] font-black text-joppli-red tracking-wider">BRAKE</span>
             <div className="w-3.5 h-32 bg-white/10 rounded-full overflow-hidden flex flex-col justify-end">
               <div 
@@ -806,7 +806,7 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
 
         {/* Right Side: Throttle/Power HUD Bar */}
         {isTestActive && (
-          <div className="absolute right-6 top-1/2 -translate-y-1/2 z-20 flex flex-col items-center gap-2 bg-black/60 backdrop-blur-sm p-3 rounded-xl border border-white/10 shadow-lg select-none">
+          <div className="absolute right-6 top-1/2 -translate-y-1/2 z-20 flex flex-col items-center gap-2 bg-black/60 backdrop-blur-sm p-3 rounded-2xl border border-white/10 shadow-lg select-none">
             <span className="text-[8px] font-black text-joppli-blue tracking-wider">POWER</span>
             <div className="w-3.5 h-32 bg-white/10 rounded-full overflow-hidden flex flex-col justify-end">
               <div 
@@ -828,7 +828,7 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
 
         {/* Top-Right HUD Stats & Signal Quality Gauge */}
         {isTestActive && (
-          <div className="absolute top-20 right-6 bg-black/75 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-white/10 z-20 flex items-center gap-3 shadow-lg font-mono text-[9px] text-white/70 select-none">
+          <div className="absolute top-20 right-6 bg-black/75 backdrop-blur-sm px-3 py-1.5 rounded-xl border border-white/10 z-20 flex items-center gap-3 shadow-lg font-mono text-[9px] text-white/70 select-none">
             <div className="flex items-center gap-1">
               <span>RTT</span>
               <span className={`font-bold ${latency > 200 ? 'text-joppli-red animate-pulse' : latency > 100 ? 'text-joppli-yellow' : 'text-joppli-green'}`}>
@@ -872,14 +872,14 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
         )}
 
         {/* Label Placement */}
-        <div className="absolute top-20 left-6 bg-black/75 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-white/10 z-20 flex items-center gap-2 shadow-lg">
+        <div className="absolute top-20 left-6 bg-black/75 backdrop-blur-sm px-3 py-1.5 rounded-xl border border-white/10 z-20 flex items-center gap-2 shadow-lg">
           <Camera className="w-4 h-4 text-white/60" />
           <span className="text-[10px] font-bold text-[#f5f5f7]">MAIN FRONT CAM (STREAM)</span>
           <span className="w-2 h-2 rounded-full bg-joppli-green animate-pulse"></span>
         </div>
 
         {/* Live on-screen telemetry overlay */}
-        <div className="absolute bottom-40 left-6 z-20 w-52 font-mono text-xs bg-black/65 p-4 rounded-xl border border-white/5 backdrop-blur-sm flex flex-col gap-1.5">
+        <div className="absolute bottom-40 left-6 z-20 w-52 font-mono text-xs bg-black/65 p-4 rounded-2xl border border-white/5 backdrop-blur-sm flex flex-col gap-1.5">
           <div className="flex justify-between text-joppli-green font-bold"><span>SPD</span><span>{(speed * 3.6).toFixed(1)} KM/H</span></div>
           <div className="flex justify-between text-white/60"><span>RPM</span><span>{Math.floor(1100 + speed * 150)}</span></div>
           <div className="flex justify-between text-white/60"><span>STR_CMD</span><span>{steering > 0 ? `R ${steering}°` : steering < 0 ? `L ${Math.abs(steering)}°` : "0°"}</span></div>
@@ -957,10 +957,10 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
           <div className="flex flex-col justify-center items-center shrink-0 border-r border-white/10 pr-6 h-full">
             <button
               onClick={() => (estopEngaged ? releaseEstop() : engageEstop())}
-              className={`w-24 h-24 rounded-full flex flex-col items-center justify-center gap-1 font-black uppercase tracking-widest text-xs transition-all border-4 shadow-lg ${
+              className={`w-24 h-24 rounded-full flex flex-col items-center justify-center gap-1 font-black uppercase tracking-widest text-xs transition-all border-4 shadow-lg btn-tactile ${
                 estopEngaged
                   ? 'bg-white text-joppli-red border-joppli-red animate-pulse'
-                  : 'bg-joppli-red text-white border-white/80 hover:bg-joppli-red/90 active:scale-95 shadow-joppli-red/30'
+                  : 'bg-joppli-red text-white border-white/80 hover:bg-joppli-red/90 shadow-joppli-red/30'
               }`}
             >
               <Octagon className="w-6 h-6" />
@@ -976,7 +976,7 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
               { name: 'REAR CH-2 CAM', id: 'rear' },
               { name: 'RIGHT SIDE CAM', id: 'right' }
             ].map(cam => (
-               <div key={cam.id} className="h-24 flex-1 bg-black/60 rounded-xl border border-white/10 relative overflow-hidden flex items-center justify-center max-w-[200px] shadow-lg">
+               <div key={cam.id} className="h-24 flex-1 bg-black/60 rounded-2xl border border-white/10 relative overflow-hidden flex items-center justify-center max-w-[200px] shadow-lg">
                   <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-sm px-1.5 py-0.5 rounded text-[8px] font-black font-mono text-white/70">
                     {cam.name}
                   </div>

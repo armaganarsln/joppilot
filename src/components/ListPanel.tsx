@@ -27,7 +27,7 @@ export const ListPanel: React.FC<ListPanelProps> = ({
           onClick={() => setCollapsed(false)}
           aria-label="Expand list panel"
           title="Expand list panel"
-          className="w-8 h-8 rounded-lg bg-joppli-grey/50 hover:bg-joppli-grey flex items-center justify-center text-joppli-dark transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-joppli-blue"
+          className="w-8 h-8 rounded-lg bg-joppli-grey/50 hover:bg-joppli-grey flex items-center justify-center text-joppli-dark transition-colors btn-tactile focus:outline-none focus-visible:ring-2 focus-visible:ring-joppli-blue"
         >
           <PanelLeftOpen className="w-4 h-4" />
         </button>
@@ -51,19 +51,19 @@ export const ListPanel: React.FC<ListPanelProps> = ({
           onClick={() => setCollapsed(true)}
           aria-label="Collapse list panel"
           title="Collapse list panel"
-          className="shrink-0 w-8 h-8 rounded-lg bg-joppli-grey/50 hover:bg-joppli-grey flex items-center justify-center text-joppli-dark transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-joppli-blue"
+          className="shrink-0 w-8 h-8 rounded-lg bg-joppli-grey/50 hover:bg-joppli-grey flex items-center justify-center text-joppli-dark transition-colors btn-tactile focus:outline-none focus-visible:ring-2 focus-visible:ring-joppli-blue"
         >
           <PanelLeftClose className="w-4 h-4" />
         </button>
         <button 
           onClick={() => onModeChange('vehicles')}
-          className={`flex-1 py-1.5 text-xs font-bold uppercase tracking-widest rounded-lg transition-colors ${mode === 'vehicles' ? 'bg-joppli-dark text-white' : 'bg-joppli-grey/50 text-joppli-dark/60 hover:bg-joppli-grey'}`}
+          className={`flex-1 py-1.5 text-xs font-bold uppercase tracking-widest rounded-lg transition-colors btn-tactile ${mode === 'vehicles' ? 'bg-joppli-dark text-white' : 'bg-joppli-grey/50 text-joppli-dark/60 hover:bg-joppli-grey'}`}
         >
           Fleet
         </button>
         <button 
           onClick={() => onModeChange('tasks')}
-          className={`flex-1 py-1.5 text-xs font-bold uppercase tracking-widest rounded-lg transition-colors relative ${mode === 'tasks' ? 'bg-joppli-dark text-white' : 'bg-joppli-grey/50 text-joppli-dark/60 hover:bg-joppli-grey'}`}
+          className={`flex-1 py-1.5 text-xs font-bold uppercase tracking-widest rounded-lg transition-colors relative btn-tactile ${mode === 'tasks' ? 'bg-joppli-dark text-white' : 'bg-joppli-grey/50 text-joppli-dark/60 hover:bg-joppli-grey'}`}
         >
           Tasks
           {requests.length > 0 && (
@@ -83,7 +83,7 @@ export const ListPanel: React.FC<ListPanelProps> = ({
               role="button"
               tabIndex={0}
               aria-pressed={isSelected}
-              className={`p-4 border rounded-xl cursor-pointer transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-joppli-blue focus-visible:ring-offset-1 ${isSelected ? 'border-joppli-blue shadow-md' : 'border-joppli-grey hover:border-joppli-dark/20 hover:shadow-sm'}`}
+              className={`p-4 border rounded-2xl cursor-pointer transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-joppli-blue focus-visible:ring-offset-1 ${isSelected ? 'border-joppli-blue shadow-md' : 'border-joppli-grey hover:border-joppli-dark/20 hover:shadow-sm'}`}
             >
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
@@ -93,13 +93,13 @@ export const ListPanel: React.FC<ListPanelProps> = ({
                   <span className="font-bold text-joppli-dark flex items-center gap-1.5 leading-none">
                     {v.name}
                     {v.isTestVehicleActive && (
-                      <span className="px-1.5 py-0.5 bg-joppli-red/10 text-joppli-red text-[8px] font-black uppercase tracking-wider rounded border border-joppli-red/25 animate-pulse shrink-0 scale-95 origin-left">
+                      <span className="px-1.5 py-0.5 bg-joppli-red/10 text-joppli-red text-[8px] font-black uppercase tracking-wider rounded-xl border border-joppli-red/25 animate-pulse shrink-0 scale-95 origin-left">
                         TEST ACTIVE
                       </span>
                     )}
                   </span>
                 </div>
-                <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full ${v.status === 'on_route' ? 'bg-joppli-blue/10 text-joppli-blue' : 'bg-joppli-grey text-joppli-dark/60'}`}>
+                <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-xl ${v.status === 'on_route' ? 'bg-joppli-blue/10 text-joppli-blue' : 'bg-joppli-grey text-joppli-dark/60'}`}>
                   {v.status.replace('_', ' ')}
                 </span>
               </div>
@@ -108,7 +108,7 @@ export const ListPanel: React.FC<ListPanelProps> = ({
                 <div>
                   <div className="flex items-center justify-between text-xs mb-1">
                      <span className="text-joppli-dark/60 flex items-center gap-1"><Battery className="w-3 h-3" /> Battery</span>
-                     <span className="font-bold text-joppli-dark">{v.battery}%</span>
+                     <span className="font-bold font-mono text-joppli-dark">{v.battery}%</span>
                   </div>
                   <div className="w-full h-1.5 bg-joppli-grey rounded-full overflow-hidden">
                      <div className="h-full bg-joppli-green" style={{ width: `${v.battery}%` }}></div>
@@ -117,7 +117,7 @@ export const ListPanel: React.FC<ListPanelProps> = ({
                 <div>
                   <div className="flex items-center justify-between text-xs mb-1">
                      <span className="text-joppli-dark/60 flex items-center gap-1"><Package className="w-3 h-3" /> Capacity</span>
-                     <span className="font-bold text-joppli-dark">{v.capacity}%</span>
+                     <span className="font-bold font-mono text-joppli-dark">{v.capacity}%</span>
                   </div>
                   <div className="w-full h-1.5 bg-joppli-grey rounded-full overflow-hidden">
                      <div className="h-full bg-joppli-blue" style={{ width: `${v.capacity}%` }}></div>
@@ -129,7 +129,7 @@ export const ListPanel: React.FC<ListPanelProps> = ({
                 <div className="mt-4 border-t border-joppli-grey/50 pt-3">
                   <button 
                     onClick={(e) => { e.stopPropagation(); onRemoteDrive?.(v.id); }}
-                    className="w-full py-2 bg-joppli-dark text-white rounded font-bold text-xs uppercase tracking-widest hover:bg-joppli-blue transition-colors flex items-center justify-center gap-2"
+                    className="w-full py-2 bg-joppli-dark text-white rounded-lg font-bold text-xs uppercase tracking-widest hover:bg-joppli-blue transition-colors btn-tactile flex items-center justify-center gap-2"
                   >
                      Remote Drive
                   </button>
@@ -146,20 +146,20 @@ export const ListPanel: React.FC<ListPanelProps> = ({
         )}
 
         {mode === 'tasks' && requests.map(req => (
-          <div key={req.id} className="p-4 border border-joppli-grey rounded-xl bg-joppli-light">
+          <div key={req.id} className="p-4 border border-joppli-grey rounded-2xl bg-joppli-light">
             <div className="flex items-start gap-3">
               <div className="mt-0.5"><MapPin className="w-4 h-4 text-joppli-red" /></div>
               <div className="flex-1">
                 <p className="font-bold text-joppli-dark text-sm">{req.address}</p>
                 <div className="flex gap-2 mt-2">
-                  <span className="text-[10px] bg-white border border-joppli-grey px-2 py-0.5 rounded uppercase font-bold text-joppli-dark/60">{req.material}</span>
-                  <span className="text-[10px] bg-white border border-joppli-grey px-2 py-0.5 rounded uppercase font-bold text-joppli-dark/60">{req.timeWindow}</span>
+                  <span className="text-[10px] bg-white border border-joppli-grey px-2 py-0.5 rounded-xl uppercase font-bold text-joppli-dark/60">{req.material}</span>
+                  <span className="text-[10px] bg-white border border-joppli-grey px-2 py-0.5 rounded-xl uppercase font-bold text-joppli-dark/60 font-mono">{req.timeWindow}</span>
                 </div>
                 
                 {selectedVehicleId && (
                   <button 
                     onClick={() => onAddToRoute(req.id, selectedVehicleId)}
-                    className="mt-4 w-full py-2 bg-joppli-blue text-white rounded font-bold text-xs hover:bg-joppli-blue/90 transition-colors flex items-center justify-center gap-2"
+                    className="mt-4 w-full py-2 bg-joppli-blue text-white rounded-lg font-bold text-xs hover:bg-joppli-blue/90 transition-colors btn-tactile flex items-center justify-center gap-2"
                   >
                     <Check className="w-3 h-3" />
                     Assign to {vehicles.find(v => v.id === selectedVehicleId)?.name}

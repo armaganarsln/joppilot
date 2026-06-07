@@ -193,7 +193,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onLoginDemo, 
       </div>
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-8 px-4 shadow-sm sm:rounded-2xl border border-joppli-grey sm:px-10">
+          <div className="bg-white py-8 px-4 shadow-xl shadow-joppli-dark/5 sm:rounded-2xl border border-joppli-grey sm:px-10">
           
           {/* Status Alerts */}
           {errorMsg && (
@@ -229,7 +229,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onLoginDemo, 
                       required
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="block w-full appearance-none rounded-xl border border-joppli-grey pl-10 pr-4 py-3 placeholder-joppli-dark/30 shadow-sm focus:border-joppli-blue focus:outline-none focus:ring-1 focus:ring-joppli-blue text-sm font-semibold transition-colors"
+                      className="block w-full appearance-none rounded-lg border border-joppli-grey pl-10 pr-4 py-3 placeholder-joppli-dark/30 shadow-sm focus:border-joppli-blue focus:outline-none focus:ring-1 focus:ring-joppli-blue text-sm font-semibold transition-colors"
                       placeholder="operator@joeppli.ch"
                     />
                   </div>
@@ -250,7 +250,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onLoginDemo, 
                       required
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className="block w-full appearance-none rounded-xl border border-joppli-grey pl-10 pr-4 py-3 placeholder-joppli-dark/30 shadow-sm focus:border-joppli-blue focus:outline-none focus:ring-1 focus:ring-joppli-blue text-sm font-semibold transition-colors"
+                      className="block w-full appearance-none rounded-lg border border-joppli-grey pl-10 pr-4 py-3 placeholder-joppli-dark/30 shadow-sm focus:border-joppli-blue focus:outline-none focus:ring-1 focus:ring-joppli-blue text-sm font-semibold transition-colors"
                       placeholder="••••••••"
                     />
                   </div>
@@ -273,13 +273,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onLoginDemo, 
                           type="button"
                           onClick={() => setSelectedProject(ws.id)}
                           aria-pressed={active}
-                          className={`flex items-center gap-3 rounded-xl border p-3 text-left transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-joppli-blue ${
+                          className={`flex items-center gap-3 rounded-2xl border p-3 text-left transition-all btn-tactile focus:outline-none focus-visible:ring-2 focus-visible:ring-joppli-blue ${
                             active
                               ? 'border-joppli-blue bg-joppli-blue/5 shadow-sm'
                               : 'border-joppli-grey hover:border-joppli-dark/20 hover:bg-joppli-light'
                           }`}
                         >
-                          <CantonFlag project={ws.id} className="w-9 h-9 rounded-md shrink-0 shadow-sm" />
+                          <CantonFlag project={ws.id} className="w-9 h-9 rounded-lg shrink-0 shadow-sm" />
                           <span className="flex flex-col min-w-0">
                             <span className="text-sm font-black text-joppli-dark leading-tight">{ws.name}</span>
                             <span className="text-[9px] font-bold uppercase tracking-wider text-joppli-dark/45 truncate">{ws.sub}</span>
@@ -309,7 +309,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onLoginDemo, 
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="block w-full appearance-none rounded-xl border border-joppli-grey pl-10 pr-4 py-3 placeholder-joppli-dark/30 shadow-sm focus:border-joppli-blue focus:outline-none focus:ring-1 focus:ring-joppli-blue text-sm font-semibold transition-colors"
+                    className="block w-full appearance-none rounded-lg border border-joppli-grey pl-10 pr-4 py-3 placeholder-joppli-dark/30 shadow-sm focus:border-joppli-blue focus:outline-none focus:ring-1 focus:ring-joppli-blue text-sm font-semibold transition-colors"
                     placeholder="your-account@email.com"
                   />
                 </div>
@@ -346,7 +346,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onLoginDemo, 
               <button
                 type="submit"
                 disabled={isLoading}
-                className="flex w-full items-center justify-center gap-2 rounded-xl border border-transparent bg-joppli-dark px-4 py-3 text-sm font-bold text-white shadow-sm hover:bg-joppli-blue focus:outline-none transition-all disabled:opacity-70 uppercase tracking-widest cursor-pointer"
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-transparent bg-joppli-dark px-4 py-3 text-sm font-bold text-white shadow-sm hover:bg-joppli-blue focus:outline-none transition-all btn-tactile disabled:opacity-70 uppercase tracking-widest cursor-pointer"
               >
                 {isLoading ? (
                   <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
@@ -365,7 +365,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onLoginDemo, 
                     type="button"
                     onClick={handleGoogleLogin}
                     disabled={isLoading}
-                    className="flex w-full items-center justify-center gap-3 rounded-xl border border-joppli-grey bg-white hover:bg-joppli-light px-4 py-3 text-sm font-black text-joppli-dark shadow-sm transition-all cursor-pointer uppercase tracking-widest"
+                    className="flex w-full items-center justify-center gap-3 rounded-lg border border-joppli-grey bg-white hover:bg-joppli-light px-4 py-3 text-sm font-black text-joppli-dark shadow-sm transition-all btn-tactile cursor-pointer uppercase tracking-widest"
                   >
                     <svg className="w-5 h-5" viewBox="0 0 24 24">
                       <path
@@ -404,7 +404,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onLoginDemo, 
                         type="button"
                         onClick={onLoginDemo}
                         disabled={isLoading}
-                        className="flex w-full items-center justify-center gap-3 rounded-xl border border-joppli-green/35 bg-joppli-green/5 hover:bg-joppli-green/10 px-4 py-3 text-sm font-black text-joppli-green shadow-sm transition-all cursor-pointer uppercase tracking-widest"
+                        className="flex w-full items-center justify-center gap-3 rounded-lg border border-joppli-green/35 bg-joppli-green/5 hover:bg-joppli-green/10 px-4 py-3 text-sm font-black text-joppli-green shadow-sm transition-all btn-tactile cursor-pointer uppercase tracking-widest"
                       >
                         <User className="w-5 h-5 text-joppli-green" />
                         Access via Demo Mode
@@ -448,7 +448,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onLoginDemo, 
                 <button
                   type="button"
                   onClick={onEnterTestVehicle}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-joppli-grey bg-joppli-light px-4 py-3 text-xs font-black text-joppli-dark shadow-sm hover:bg-joppli-grey/40 focus:outline-none transition-all uppercase tracking-widest cursor-pointer"
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-joppli-grey bg-joppli-light px-4 py-3 text-xs font-black text-joppli-dark shadow-sm hover:bg-joppli-grey/40 focus:outline-none transition-all btn-tactile uppercase tracking-widest cursor-pointer"
                 >
                   <Truck className="w-4 h-4 text-joppli-blue" />
                   Enter Test Vehicle Mode

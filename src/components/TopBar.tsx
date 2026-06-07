@@ -91,7 +91,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         <div className="relative" ref={alertsRef}>
           <button 
             onClick={() => setShowAlerts(!showAlerts)}
-            className={`relative w-8 h-8 rounded-full flex items-center justify-center transition-colors cursor-pointer ${
+            className={`relative w-8 h-8 rounded-full flex items-center justify-center transition-colors btn-tactile cursor-pointer ${
               showAlerts ? 'bg-joppli-grey text-joppli-dark' : 'text-joppli-dark hover:bg-joppli-light'
             }`}
           >
@@ -107,7 +107,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                 <span className="font-black text-xs uppercase tracking-widest text-joppli-dark/70">Alert History</span>
                 <button 
                   onClick={onClearAlerts} 
-                  className="text-[10px] text-joppli-blue hover:underline font-black uppercase tracking-wider"
+                  className="text-[10px] text-joppli-blue hover:underline btn-tactile font-black uppercase tracking-wider"
                 >
                   Mark all read
                 </button>
@@ -141,7 +141,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         <div className="relative h-full flex items-center" ref={dropdownRef}>
           <button 
             onClick={() => setShowProfileDropdown(!showProfileDropdown)}
-            className="flex items-center gap-3.5 pl-2.5 pr-1.5 py-1.5 rounded-2xl hover:bg-joppli-light transition-all cursor-pointer text-left border border-transparent hover:border-joppli-grey/60"
+            className="flex items-center gap-3.5 pl-2.5 pr-1.5 py-1.5 rounded-2xl hover:bg-joppli-light transition-all btn-tactile cursor-pointer text-left border border-transparent hover:border-joppli-grey/60"
           >
             {/* User Profile Avatar */}
             {photoURL && !avatarError ? (
@@ -197,7 +197,7 @@ export const TopBar: React.FC<TopBarProps> = ({
               {/* Status Badge */}
               <div className="mb-4">
                 <span className="text-[8px] font-black uppercase tracking-widest text-joppli-dark/40 block mb-1">Privilege Status</span>
-                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest border ${
+                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[9px] font-black uppercase tracking-widest border ${
                   isAdmin 
                     ? 'bg-joppli-green/10 text-joppli-green border-joppli-green/20' 
                     : 'bg-joppli-blue/10 text-joppli-blue border-joppli-blue/20'
@@ -209,12 +209,12 @@ export const TopBar: React.FC<TopBarProps> = ({
 
               {/* Actions */}
               <div className="pt-2 border-t border-joppli-grey/50">
-                <button
+                 <button
                   onClick={() => {
                     setShowProfileDropdown(false);
                     onLogout();
                   }}
-                  className="w-full py-2 bg-white hover:bg-joppli-red/5 hover:text-joppli-red text-joppli-dark/85 border border-joppli-grey hover:border-joppli-red/20 rounded-xl text-xs font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  className="w-full py-2 bg-white hover:bg-joppli-red/5 hover:text-joppli-red text-joppli-dark/85 border border-joppli-grey hover:border-joppli-red/20 rounded-lg text-xs font-bold uppercase tracking-widest transition-all btn-tactile flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <LogOut className="w-4 h-4" />
                   Sign Out of Terminal

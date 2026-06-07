@@ -78,7 +78,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
       <button
         onClick={() => setMobileOpen(true)}
         aria-label="Open navigation menu"
-        className="md:hidden fixed top-3 left-3 z-[1200] w-10 h-10 rounded-lg bg-joppli-dark text-white flex items-center justify-center shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-joppli-blue"
+        className="md:hidden fixed top-3 left-3 z-[1200] w-10 h-10 rounded-lg bg-joppli-dark text-white flex items-center justify-center shadow-lg btn-tactile focus:outline-none focus-visible:ring-2 focus-visible:ring-joppli-blue"
       >
         <Menu className="w-5 h-5" />
       </button>
@@ -106,7 +106,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               aria-haspopup={canSwitch ? 'menu' : undefined}
               aria-expanded={canSwitch ? showWorkspaceMenu : undefined}
               title={canSwitch ? 'Switch workspace' : undefined}
-              className={`flex items-center gap-3 flex-1 min-w-0 -m-1 p-1 rounded-lg transition-colors ${canSwitch ? 'hover:bg-white/5 cursor-pointer' : 'cursor-default'}`}
+              className={`flex items-center gap-3 flex-1 min-w-0 -m-1 p-1 rounded-lg transition-colors ${canSwitch ? 'hover:bg-white/5 cursor-pointer btn-tactile' : 'cursor-default'}`}
             >
               <CantonFlag project={activeId} className="w-10 h-10 rounded-lg shrink-0 shadow-sm ring-1 ring-white/10" />
               <div className="flex flex-col items-start min-w-0">
@@ -132,7 +132,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
           {canSwitch && showWorkspaceMenu && (
             <>
               <div className="fixed inset-0 z-[1] " onClick={() => setShowWorkspaceMenu(false)} aria-hidden="true" />
-              <div role="menu" className="absolute left-4 right-4 mt-2 z-[2] bg-[#3a3d4d] border border-white/10 rounded-xl shadow-2xl overflow-hidden">
+              <div role="menu" className="absolute left-4 right-4 mt-2 z-[2] bg-[#3a3d4d] border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
                 {WORKSPACES.map(ws => {
                   const selected = ws.id === activeId;
                   return (
@@ -144,7 +144,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                         setShowWorkspaceMenu(false);
                         if (!selected) onProjectChange?.(ws.id);
                       }}
-                      className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors ${selected ? 'bg-white/10' : 'hover:bg-white/5'}`}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors btn-tactile ${selected ? 'bg-white/10' : 'hover:bg-white/5'}`}
                     >
                       <CantonFlag project={ws.id} className="w-8 h-8 rounded-md shrink-0 shadow-sm ring-1 ring-white/10" />
                       <div className="flex flex-col flex-1 min-w-0">
@@ -168,7 +168,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               <button
                 key={item.id}
                 onClick={() => handleNav(item.id)}
-                className={`flex items-center justify-between w-full px-3 py-2 rounded-lg transition-colors text-sm font-medium ${
+                className={`flex items-center justify-between w-full px-3 py-2 rounded-lg transition-colors text-sm font-medium btn-tactile ${
                   isActive
                     ? "bg-joppli-blue text-white"
                     : "text-[#a2bfdb] hover:bg-white/10 hover:text-white"
