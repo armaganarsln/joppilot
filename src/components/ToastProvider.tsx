@@ -67,7 +67,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             key={t.id}
             role="status"
             aria-live="polite"
-            className={`pointer-events-auto bg-white border border-joppli-grey border-l-4 ${VARIANT_STYLES[t.variant].border} rounded-xl shadow-lg shadow-joppli-dark/10 px-4 py-3 flex items-start gap-3 animate-fade-in`}
+            className={`pointer-events-auto bg-white border border-joppli-grey border-l-4 ${VARIANT_STYLES[t.variant].border} rounded-xl md-elevation-3 px-4 py-3 flex items-start gap-3 animate-fade-in`}
           >
             <span className="shrink-0 mt-0.5">{VARIANT_STYLES[t.variant].icon}</span>
             <p className="flex-1 text-sm font-semibold text-joppli-dark leading-snug">{t.message}</p>

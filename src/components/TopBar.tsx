@@ -102,7 +102,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           </button>
           
           {showAlerts && (
-            <div className="absolute right-0 mt-3.5 w-85 bg-white border border-joppli-grey rounded-2xl shadow-xl shadow-joppli-dark/5 overflow-hidden z-[100] flex flex-col">
+            <div className="absolute right-0 mt-3.5 w-85 bg-white border border-joppli-grey rounded-2xl md-elevation-3 overflow-hidden z-[100] flex flex-col">
               <div className="px-4 py-3 border-b border-joppli-grey flex items-center justify-between bg-joppli-light">
                 <span className="font-black text-xs uppercase tracking-widest text-joppli-dark/70">Alert History</span>
                 <button 
@@ -173,7 +173,7 @@ export const TopBar: React.FC<TopBarProps> = ({
 
           {/* Premium Profile Dropdown Panel */}
           {showProfileDropdown && (
-            <div className="absolute right-0 top-[60px] w-72 bg-white border border-joppli-grey rounded-2xl shadow-xl shadow-joppli-dark/5 overflow-hidden z-[100] p-4 text-joppli-dark">
+            <div className="absolute right-0 top-[60px] w-72 bg-white border border-joppli-grey rounded-2xl md-elevation-3 overflow-hidden z-[100] p-4 text-joppli-dark">
               {/* Header */}
               <div className="flex items-center gap-3 pb-3 border-b border-joppli-grey/60 mb-3">
                 {photoURL && !dropdownAvatarError ? (

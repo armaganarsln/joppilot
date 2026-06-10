@@ -83,7 +83,7 @@ export const ListPanel: React.FC<ListPanelProps> = ({
               role="button"
               tabIndex={0}
               aria-pressed={isSelected}
-              className={`p-4 border rounded-2xl cursor-pointer transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-joppli-blue focus-visible:ring-offset-1 ${isSelected ? 'border-joppli-blue shadow-md' : 'border-joppli-grey hover:border-joppli-dark/20 hover:shadow-sm'}`}
+              className={`p-4 border rounded-2xl cursor-pointer transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-joppli-blue focus-visible:ring-offset-1 ${isSelected ? 'border-joppli-blue md-elevation-2' : 'border-joppli-grey hover:border-joppli-dark/20 hover:md-elevation-1'}`}
             >
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
