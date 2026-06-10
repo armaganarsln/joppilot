@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
-  stepDrive, isLockStale,
+  stepDrive, isLockStale, failsafeStage, applyFailsafeThrottle,
   STEER_STEP, STEER_MAX, THROTTLE_STEP, THROTTLE_BRAKE_STEP, THROTTLE_COAST_STEP,
+  FAILSAFE_SPEED_CAP_MS, FAILSAFE_SLOWDOWN_MS, FAILSAFE_STOP_MS,
+  FAILSAFE_SPEED_CAP_PCT, FAILSAFE_SLOWDOWN_STEP,
 } from './driveModel';
 
 describe('stepDrive — steering', () => {
@@ -53,6 +55,32 @@ describe('stepDrive — emergency stop', () => {
   it('forces both axes to zero regardless of input', () => {
     const s = stepDrive({ steer: 40, throttle: 80 }, { steerInput: 1, throttleInput: 1, estop: true });
     expect(s).toEqual({ steer: 0, throttle: 0 });
+  });
+});
+
+describe('graded failsafe', () => {
+  it('escalates through the stages as heartbeat loss is sustained', () => {
+    expect(failsafeStage(0)).toBe('NOMINAL');
+    expect(failsafeStage(FAILSAFE_SPEED_CAP_MS)).toBe('NOMINAL'); // boundary is exclusive
+    expect(failsafeStage(FAILSAFE_SPEED_CAP_MS + 1)).toBe('SPEED_CAP');
+    expect(failsafeStage(FAILSAFE_SLOWDOWN_MS + 1)).toBe('SLOWDOWN');
+    expect(failsafeStage(FAILSAFE_STOP_MS + 1)).toBe('SAFE_STOP');
+  });
+
+  it('caps but does not reduce throttle under SPEED_CAP', () => {
+    expect(applyFailsafeThrottle(90, 'SPEED_CAP')).toBe(FAILSAFE_SPEED_CAP_PCT);
+    expect(applyFailsafeThrottle(30, 'SPEED_CAP')).toBe(30);
+  });
+
+  it('ramps throttle toward zero under SLOWDOWN without going negative', () => {
+    expect(applyFailsafeThrottle(90, 'SLOWDOWN')).toBe(FAILSAFE_SPEED_CAP_PCT - FAILSAFE_SLOWDOWN_STEP);
+    expect(applyFailsafeThrottle(30, 'SLOWDOWN')).toBe(30 - FAILSAFE_SLOWDOWN_STEP);
+    expect(applyFailsafeThrottle(5, 'SLOWDOWN')).toBe(0);
+  });
+
+  it('zeroes throttle on SAFE_STOP and passes through when NOMINAL', () => {
+    expect(applyFailsafeThrottle(70, 'SAFE_STOP')).toBe(0);
+    expect(applyFailsafeThrottle(70, 'NOMINAL')).toBe(70);
   });
 });
 

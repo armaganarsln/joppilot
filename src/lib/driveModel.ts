@@ -62,3 +62,34 @@ export function isLockStale(heartbeat: number | undefined, now: number, timeoutM
   if (heartbeat === undefined) return true;
   return now - heartbeat > timeoutMs;
 }
+
+// ---- Graded failsafe (Plan v2) ----
+// Heartbeat loss no longer trips a binary safe-stop. The response escalates:
+// first a speed cap, then a controlled slowdown, and only after sustained loss
+// a latched safe stop (MRM). Production grades these windows by vehicle speed;
+// the prototype uses fixed windows sized against the 1 s operator heartbeat.
+export type FailsafeStage = 'NOMINAL' | 'SPEED_CAP' | 'SLOWDOWN' | 'SAFE_STOP';
+
+export const FAILSAFE_SPEED_CAP_MS = 1500;  // > 1 missed heartbeat: cap speed
+export const FAILSAFE_SLOWDOWN_MS = 2500;   // sustained loss: ramp throttle down
+export const FAILSAFE_STOP_MS = 4500;       // hard trip: safe stop, latched
+export const FAILSAFE_SPEED_CAP_PCT = 50;   // throttle ceiling under SPEED_CAP
+export const FAILSAFE_SLOWDOWN_STEP = 10;   // throttle ramp-down per watchdog tick
+
+/** Escalation stage for a given time since the last operator heartbeat. */
+export function failsafeStage(sinceHeartbeatMs: number): FailsafeStage {
+  if (sinceHeartbeatMs > FAILSAFE_STOP_MS) return 'SAFE_STOP';
+  if (sinceHeartbeatMs > FAILSAFE_SLOWDOWN_MS) return 'SLOWDOWN';
+  if (sinceHeartbeatMs > FAILSAFE_SPEED_CAP_MS) return 'SPEED_CAP';
+  return 'NOMINAL';
+}
+
+/** Throttle after applying one watchdog tick of the given failsafe stage. */
+export function applyFailsafeThrottle(throttle: number, stage: FailsafeStage): number {
+  switch (stage) {
+    case 'NOMINAL': return throttle;
+    case 'SPEED_CAP': return Math.min(throttle, FAILSAFE_SPEED_CAP_PCT);
+    case 'SLOWDOWN': return Math.max(0, Math.min(throttle, FAILSAFE_SPEED_CAP_PCT) - FAILSAFE_SLOWDOWN_STEP);
+    case 'SAFE_STOP': return 0;
+  }
+}

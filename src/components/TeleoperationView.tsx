@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Video, Radio, Camera, AlertTriangle, Lock, Octagon, Keyboard, Gamepad2, Hand, Check, X } from 'lucide-react';
-import { doc, onSnapshot, updateDoc, runTransaction } from 'firebase/firestore';
+import { Video, Radio, Camera, AlertTriangle, Lock, Octagon, Keyboard, Gamepad2, Hand, Check, X, CornerUpRight } from 'lucide-react';
+import { doc, onSnapshot, setDoc, updateDoc, runTransaction, arrayUnion, increment } from 'firebase/firestore';
 import { db } from '../firebase';
 import { vehicleName } from '../config/vehicles';
 import { getIceServers } from '../lib/iceServers';
 import { stepDrive } from '../lib/driveModel';
 import { useToast } from './ToastProvider';
 import { PLACES_BY_PROJECT } from '../config/places';
-import type { WorkspaceProject } from '../types';
+import type { WorkspaceProject, ManeuverProposal } from '../types';
 
 // Cadence at which the operator stamps a liveness heartbeat onto the vehicle
 // document. The vehicle's deadman watchdog (TestVehicleScreen) zeroes throttle
@@ -68,18 +68,27 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
   // can show the grant/deny banner. When we're locked out, tracks our own pending request.
   const [incomingRequest, setIncomingRequest] = useState<ControlRequest | null>(null);
   const [requestPending, setRequestPending] = useState(false);
+  // Which command path is live: P2P DataChannel (primary) or the cloud mirror.
+  const [cmdPath, setCmdPath] = useState<'p2p' | 'cloud'>('cloud');
+  // Mode 1 supervision: maneuver the vehicle proposed and awaits a verdict on.
+  const [proposal, setProposal] = useState<ManeuverProposal | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
+  const dcRef = useRef<RTCDataChannel | null>(null);
   const candAdded = useRef<Set<string>>(new Set());
   // Monotonic counter so the vehicle can detect a genuinely new command without
   // relying on cross-device wall-clock comparison (which clock skew breaks).
   const commandSeqRef = useRef(0);
   const controlWriteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingControlRef = useRef<{ steeringAngle?: number; throttle?: number }>({});
-  // Unique per tab/session so two windows (even same user) can't both hold control.
+  // Unique per tab/session so two windows (even same user) can't both hold
+  // control. Also names the session's audit-log document, so it must satisfy
+  // the Firestore id charset (no dots).
   const sessionIdRef = useRef<string>(
-    typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `s_${Date.now()}_${Math.random()}`
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `s_${Date.now()}_${Math.random().toString(36).slice(2)}`
   );
   // True while this session owns the control lock (gates all control writes).
   const hasControlRef = useRef(false);
@@ -97,6 +106,52 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
   const displayName = vehicleName(vehicleId, project ?? 'zurich');
   const operatorLabel = operatorEmail ?? 'operator';
 
+  // Send a command frame on the primary path (WebRTC DataChannel). Returns
+  // false when the channel isn't open, so callers know only the cloud mirror
+  // carried the command.
+  const sendP2P = useCallback((frame: Record<string, unknown>): boolean => {
+    const dc = dcRef.current;
+    if (dc && dc.readyState === 'open') {
+      try {
+        dc.send(JSON.stringify(frame));
+        return true;
+      } catch { /* channel closing — cloud mirror still carries the command */ }
+    }
+    return false;
+  }, []);
+
+  // Append a discrete event to this session's audit log (Plan v2 session
+  // recording, prototype scale: append-only events on a per-session document;
+  // production stores video+commands+telemetry on WORM storage).
+  const logSession = useCallback((t: string, extra?: Record<string, unknown>) => {
+    updateDoc(doc(db, 'teleop_sessions', sessionIdRef.current), {
+      events: arrayUnion({ t, at: Date.now(), ...(extra ?? {}) }),
+      ...(t === 'estop' ? { estopCount: increment(1) } : {}),
+    }).catch(() => {});
+  }, []);
+
+  // Open the session audit record when the view mounts; close it on exit.
+  useEffect(() => {
+    const ref = doc(db, 'teleop_sessions', sessionIdRef.current);
+    setDoc(ref, {
+      id: sessionIdRef.current,
+      vehicleId,
+      operator: operatorLabel,
+      project: project ?? 'zurich',
+      startedAt: Date.now(),
+      status: 'active',
+      estopCount: 0,
+      events: [{ t: 'session_start', at: Date.now() }],
+    }).catch(() => {});
+    return () => {
+      updateDoc(ref, {
+        status: 'ended',
+        endedAt: Date.now(),
+        events: arrayUnion({ t: 'session_end', at: Date.now() }),
+      }).catch(() => {});
+    };
+  }, [vehicleId, project, operatorLabel]);
+
   // Debounced write of steering/throttle control inputs to Firestore.
   const flushControlWrite = useCallback(() => {
     const payload = pendingControlRef.current;
@@ -111,13 +166,22 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
 
   const queueControlWrite = useCallback((patch: { steeringAngle?: number; throttle?: number }) => {
     if (!isTestActive || !hasControlRef.current) return;
+    // Primary path (Plan v2): full drive frame over the DataChannel at the
+    // input rate; the debounced Firestore write below is the cloud mirror.
+    sendP2P({
+      t: 'drive',
+      steer: Math.round(steerRef.current),
+      throttle: Math.round(throttleRef.current),
+      seq: ++commandSeqRef.current,
+      ts: Date.now(),
+    });
     pendingControlRef.current = { ...pendingControlRef.current, ...patch };
     if (controlWriteTimerRef.current) return;
     controlWriteTimerRef.current = setTimeout(() => {
       controlWriteTimerRef.current = null;
       flushControlWrite();
     }, CONTROL_WRITE_DEBOUNCE_MS);
-  }, [isTestActive, flushControlWrite]);
+  }, [isTestActive, flushControlWrite, sendP2P]);
 
   // Emergency stop (RD UX #2): immediately zero controls and trigger a minimal-
   // risk maneuver, bypassing the debounce. Engaging E-STOP also latches until
@@ -132,33 +196,41 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
     setThrottle(0);
     keysRef.current.clear();
     if (!isTestActive || !hasControlRef.current) return;
+    // Dual-path E-STOP (Plan v2): one sequence number, transmitted on both the
+    // DataChannel and the cloud mirror simultaneously; the vehicle deduplicates.
     commandSeqRef.current += 1;
+    const seq = commandSeqRef.current;
+    sendP2P({ t: 'estop', seq, ts: Date.now() });
+    logSession('estop');
     updateDoc(doc(db, 'test_vehicles', vehicleId), {
       steeringAngle: 0,
       throttle: 0,
       avState: 'MRM',
       operatorCommand: 'WAIT',
-      operatorCommandSeq: commandSeqRef.current,
+      operatorCommandSeq: seq,
       operatorCommandTimestamp: Date.now(),
       operatorHeartbeat: Date.now(),
       updatedAt: Date.now(),
     }).catch(() => {});
-  }, [isTestActive, vehicleId, displayName, toastWarning]);
+  }, [isTestActive, vehicleId, displayName, toastWarning, sendP2P, logSession]);
 
   const releaseEstop = useCallback(() => {
     estopRef.current = false;
     setEstopEngaged(false);
     if (!isTestActive || !hasControlRef.current) return;
     commandSeqRef.current += 1;
+    const seq = commandSeqRef.current;
+    sendP2P({ t: 'estop_release', seq, ts: Date.now() });
+    logSession('estop_release');
     updateDoc(doc(db, 'test_vehicles', vehicleId), {
       avState: 'MANUAL',
       operatorCommand: 'TAKE_OVER',
-      operatorCommandSeq: commandSeqRef.current,
+      operatorCommandSeq: seq,
       operatorCommandTimestamp: Date.now(),
       operatorHeartbeat: Date.now(),
       updatedAt: Date.now(),
     }).catch(() => {});
-  }, [isTestActive, vehicleId]);
+  }, [isTestActive, vehicleId, sendP2P, logSession]);
 
   // Listen to the live vehicle document from Firestore
   useEffect(() => {
@@ -180,16 +252,22 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
           const isOutside = data.lat < bounds.latMin || data.lat > bounds.latMax || data.lng < bounds.lngMin || data.lng > bounds.lngMax;
           if (isOutside && !estopRef.current && hasControlRef.current) {
             engageEstop();
+            logSession('geofence_violation', { lat: data.lat, lng: data.lng });
             toastWarning("GEOFENCE VIOLATION: Automatic Safety Halt engaged!");
           }
         }
+
+        // Mode 1 supervision: surface the vehicle's pending maneuver proposal.
+        const mp = data.maneuverProposal as ManeuverProposal | undefined;
+        setProposal(mp && mp.status === 'pending' ? mp : null);
       } else {
         setIsTestActive(false);
+        setProposal(null);
       }
     });
 
     return () => unsub();
-  }, [vehicleId, project, engageEstop, toastWarning]);
+  }, [vehicleId, project, engageEstop, toastWarning, logSession]);
 
   // Single-operator control lock (RD-7). Atomically claim the vehicle on a
   // dedicated `control_locks/{vehicleId}` doc so two operators can't drive the
@@ -239,6 +317,12 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
           toastSuccess(`You now have control of ${displayName}`);
           setRequestPending(false);
         }
+        // Audit-log control transitions (fencing-token acquire/release).
+        if (result.acquired && !hasControlRef.current) {
+          logSession('control_acquired');
+        } else if (!result.acquired && hasControlRef.current) {
+          logSession('control_lost', { to: result.holder });
+        }
         hasControlRef.current = result.acquired;
         setLockedBy(result.acquired ? null : result.holder);
         // Surface an incoming request only while WE hold control.
@@ -272,7 +356,7 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
       }
       hasControlRef.current = false;
     };
-  }, [vehicleId, operatorLabel, requestPending]);
+  }, [vehicleId, operatorLabel, requestPending, logSession]);
 
   // Locked-out operator asks the current holder for control (RD UX #3).
   const requestControl = useCallback(() => {
@@ -309,6 +393,22 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
             iceServers: await getIceServers()
           });
           pcRef.current = pc;
+
+          // Primary command path (Plan v2): the vehicle opens a 'control'
+          // DataChannel with its offer. Once open, drive frames, heartbeats and
+          // E-STOP ride it; Firestore stays as the cloud mirror/backup path.
+          pc.ondatachannel = (event) => {
+            const dc = event.channel;
+            dcRef.current = dc;
+            dc.onopen = () => {
+              setCmdPath('p2p');
+              logSession('p2p_channel_open');
+            };
+            dc.onclose = () => {
+              setCmdPath('cloud');
+              logSession('p2p_channel_lost');
+            };
+          };
 
           // Connection status monitoring
           pc.onconnectionstatechange = () => {
@@ -383,10 +483,12 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
         pcRef.current.close();
         pcRef.current = null;
       }
+      dcRef.current = null;
+      setCmdPath('cloud');
       candAdded.current.clear();
       setP2pConnected(false);
     };
-  }, [vehicleId]);
+  }, [vehicleId, logSession]);
 
   // Local cruise simulation when no real simulator/hardware is attached.
   useEffect(() => {
@@ -405,7 +507,9 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
 
     const heartbeat = setInterval(async () => {
       // Only the controlling operator stamps the vehicle's deadman heartbeat.
+      // Sent on both paths: P2P DataChannel and the Firestore cloud mirror.
       if (hasControlRef.current) {
+        sendP2P({ t: 'hb', ts: Date.now() });
         await updateDoc(doc(db, 'test_vehicles', vehicleId), {
           operatorHeartbeat: Date.now(),
           updatedAt: Date.now(),
@@ -428,7 +532,26 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
     }, HEARTBEAT_INTERVAL_MS);
 
     return () => clearInterval(heartbeat);
-  }, [isTestActive, vehicleId]);
+  }, [isTestActive, vehicleId, sendP2P]);
+
+  // Mode 1 supervision: confirm or reject the maneuver the vehicle proposed.
+  // The verdict travels dual-path (DataChannel + Firestore) and is audit-logged.
+  const decideManeuver = useCallback(async (decision: 'confirmed' | 'rejected') => {
+    const m = proposal;
+    if (!m) return;
+    setProposal(null);
+    sendP2P({ t: 'maneuver_decision', id: m.id, decision, by: operatorLabel, label: m.label, ts: Date.now() });
+    logSession(decision === 'confirmed' ? 'maneuver_confirmed' : 'maneuver_rejected', { label: m.label });
+    await updateDoc(doc(db, 'test_vehicles', vehicleId), {
+      maneuverProposal: { ...m, status: decision, decidedBy: operatorLabel, decidedAt: Date.now() },
+      updatedAt: Date.now(),
+    }).catch(() => {});
+    if (decision === 'confirmed') {
+      toastSuccess(`Maneuver confirmed: ${m.label}`);
+    } else {
+      toastWarning(`Maneuver rejected: ${m.label}`);
+    }
+  }, [proposal, vehicleId, operatorLabel, sendP2P, logSession, toastSuccess, toastWarning]);
 
   // Keyboard + gamepad driving (RD UX #1). Keys/triggers feed a fixed-rate loop
   // that integrates steering and throttle, auto-centers steering on release, and
@@ -728,6 +851,13 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
                  }
                </span>
              </div>
+             <div className="flex flex-col">
+               <span className="text-[10px] text-white/50 mb-0.5">Cmd Path</span>
+               <span className={`text-xs font-black flex items-center gap-1.5 ${cmdPath === 'p2p' ? 'text-joppli-green' : 'text-joppli-yellow'}`}>
+                 <Radio className="w-3.5 h-3.5" />
+                 {cmdPath === 'p2p' ? 'P2P DIRECT' : 'CLOUD RELAY'}
+               </span>
+             </div>
           </div>
         </div>
 
@@ -815,6 +945,38 @@ export const TeleoperationView: React.FC<TeleoperationViewProps> = ({ vehicleId,
               ></div>
             </div>
             <span className="text-[9px] font-mono font-bold text-joppli-blue">{throttle}%</span>
+          </div>
+        )}
+
+        {/* Mode 1 supervision: maneuver confirmation card (OAD public-road model) */}
+        {isTestActive && proposal && !lockedBy && (
+          <div className="absolute bottom-44 left-1/2 -translate-x-1/2 z-30 w-[420px] max-w-[calc(100vw-2rem)] bg-[#14151b]/95 backdrop-blur-md border-2 border-joppli-yellow/60 rounded-2xl shadow-2xl p-5 animate-fade-in">
+            <div className="flex items-center gap-2 mb-2">
+              <CornerUpRight className="w-4 h-4 text-joppli-yellow shrink-0" />
+              <span className="text-[10px] font-black tracking-widest text-joppli-yellow">
+                MANEUVER CONFIRMATION REQUIRED — MODE 1
+              </span>
+            </div>
+            <p className="text-sm font-bold text-[#f5f5f7] normal-case tracking-normal mb-1">
+              {displayName} proposes: {proposal.label}
+            </p>
+            <p className="text-[10px] text-white/45 normal-case tracking-normal mb-4">
+              Vehicle holds position until you confirm or reject. Your verdict is transmitted dual-path and audit-logged.
+            </p>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => decideManeuver('confirmed')}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-joppli-green hover:bg-joppli-green/85 text-joppli-dark rounded-xl text-xs font-black uppercase tracking-widest transition-all btn-tactile"
+              >
+                <Check className="w-4 h-4" /> Confirm
+              </button>
+              <button
+                onClick={() => decideManeuver('rejected')}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-joppli-red hover:bg-joppli-red/85 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all btn-tactile"
+              >
+                <X className="w-4 h-4" /> Reject
+              </button>
+            </div>
           </div>
         )}
 

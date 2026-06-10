@@ -4,6 +4,9 @@ import { doc, onSnapshot, setDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { vehicleName } from '../config/vehicles';
 import { getIceServers } from '../lib/iceServers';
+import { failsafeStage, applyFailsafeThrottle, type FailsafeStage } from '../lib/driveModel';
+import { MANEUVER_CATALOG } from '../lib/vehicleState';
+import type { ManeuverProposal, ManeuverKind } from '../types';
 
 // Minimal typing for the non-standard Battery Status API (not in TS DOM lib).
 interface BatteryManager extends EventTarget {
@@ -11,10 +14,9 @@ interface BatteryManager extends EventTarget {
 }
 type NavigatorWithBattery = Navigator & { getBattery: () => Promise<BatteryManager> };
 
-// If no operator heartbeat is seen for this long while under MANUAL control, the
-// deadman watchdog zeroes throttle/steering and reverts to a safe stop. Must be
-// comfortably larger than the operator's HEARTBEAT_INTERVAL_MS (currently 1s).
-const DEADMAN_TIMEOUT_MS = 2500;
+// Deadman escalation windows live in lib/driveModel (FAILSAFE_*_MS): heartbeat
+// loss now grades through SPEED_CAP → SLOWDOWN → SAFE_STOP instead of a single
+// hard timeout. Windows are sized against the operator's 1 s heartbeat cadence.
 
 interface TestVehicleScreenProps {
   onBack: () => void;
@@ -38,9 +40,18 @@ export const TestVehicleScreen: React.FC<TestVehicleScreenProps> = ({ onBack }) 
   const [steeringAngle, setSteeringAngle] = useState<number>(0);
   const [throttle, setThrottle] = useState<number>(0);
   const [linkLost, setLinkLost] = useState(false);
+  // Graded failsafe stage (Plan v2): NOMINAL → SPEED_CAP → SLOWDOWN → SAFE_STOP.
+  const [failsafe, setFailsafe] = useState<FailsafeStage>('NOMINAL');
+  // Which command path is live: P2P DataChannel (primary) or cloud mirror.
+  const [cmdPath, setCmdPath] = useState<'p2p' | 'cloud'>('cloud');
+  // Mode 1 supervision: our outstanding maneuver proposal and the operator's verdict.
+  const [pendingProposal, setPendingProposal] = useState<ManeuverProposal | null>(null);
+  const [proposalDecision, setProposalDecision] = useState<{ label: string; decision: 'confirmed' | 'rejected' } | null>(null);
+  const [showManeuverDropdown, setShowManeuverDropdown] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
+  const dcRef = useRef<RTCDataChannel | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const candAdded = useRef<Set<string>>(new Set());
   const lastCommandRef = useRef<string | null>(null);
@@ -48,7 +59,10 @@ export const TestVehicleScreen: React.FC<TestVehicleScreenProps> = ({ onBack }) 
   // Tracks the last command sequence number we acted on, and the freshest
   // operator heartbeat we've observed (for the deadman watchdog).
   const lastCommandSeqRef = useRef<number>(-1);
+  const lastDriveSeqRef = useRef<number>(-1);
   const lastHeartbeatRef = useRef<number>(0);
+  const lastDecisionKeyRef = useRef<string | null>(null);
+  const failsafePrevRef = useRef<FailsafeStage>('NOMINAL');
   const avStateRef = useRef(avState);
   avStateRef.current = avState;
 
@@ -80,6 +94,72 @@ export const TestVehicleScreen: React.FC<TestVehicleScreenProps> = ({ onBack }) 
     } catch (err) {
       console.warn("Audio Context playback not allowed yet, context suspended:", err);
     }
+  };
+
+  // Apply a discrete operator command, whichever path delivered it first.
+  // Commands are deduplicated by monotonic sequence number (Plan v2: dual-path
+  // delivery on the WebRTC DataChannel and the cloud mirror, dedupe at vehicle).
+  const applyOperatorCommand = (cmd: string, seq: number | null, cmdTime: number) => {
+    const isNew = seq !== null
+      ? seq > lastCommandSeqRef.current
+      : cmdTime !== lastCommandTimestampRef.current;
+    if (!isNew) return;
+    if (seq !== null) lastCommandSeqRef.current = seq;
+    lastCommandTimestampRef.current = cmdTime;
+    setOperatorCommand(cmd);
+    setShowCommandOverlay(true);
+
+    if (cmd === 'TAKE_OVER') {
+      setAvState('MANUAL');
+      lastHeartbeatRef.current = Date.now(); // grace period for first heartbeat
+      playBeep('alert');
+    } else {
+      playBeep('success');
+      if (cmd === 'PROCEED') {
+        setAvState('AUTONOMOUS');
+      }
+    }
+
+    setTimeout(() => setShowCommandOverlay(false), 3000);
+  };
+
+  // Operator verdict on a maneuver we proposed (Mode 1). Deduplicated by
+  // proposal id + decision since it can arrive via DataChannel and Firestore.
+  const applyManeuverDecision = (id: string, decision: 'confirmed' | 'rejected', label: string) => {
+    const key = `${id}:${decision}`;
+    if (lastDecisionKeyRef.current === key) return;
+    lastDecisionKeyRef.current = key;
+    setPendingProposal(null);
+    setProposalDecision({ label, decision });
+    playBeep(decision === 'confirmed' ? 'success' : 'alert');
+    setTimeout(() => setProposalDecision(null), 4000);
+  };
+
+  // Primary command path (Plan v2): frames arriving on the WebRTC DataChannel.
+  // Any frame doubles as a liveness signal for the deadman watchdog.
+  const handleControlFrame = (raw: string) => {
+    let msg: any;
+    try { msg = JSON.parse(raw); } catch { return; }
+    lastHeartbeatRef.current = Date.now();
+    setLinkLost(false);
+
+    if (msg.t === 'drive' && typeof msg.seq === 'number') {
+      if (msg.seq <= lastDriveSeqRef.current) return;
+      lastDriveSeqRef.current = msg.seq;
+      if (avStateRef.current === 'MANUAL') {
+        setSteeringAngle(typeof msg.steer === 'number' ? msg.steer : 0);
+        setThrottle(typeof msg.throttle === 'number' ? msg.throttle : 0);
+      }
+    } else if (msg.t === 'estop') {
+      setSteeringAngle(0);
+      setThrottle(0);
+      applyOperatorCommand('WAIT', typeof msg.seq === 'number' ? msg.seq : null, msg.ts ?? Date.now());
+    } else if (msg.t === 'estop_release') {
+      applyOperatorCommand('TAKE_OVER', typeof msg.seq === 'number' ? msg.seq : null, msg.ts ?? Date.now());
+    } else if (msg.t === 'maneuver_decision' && typeof msg.id === 'string') {
+      applyManeuverDecision(msg.id, msg.decision === 'confirmed' ? 'confirmed' : 'rejected', msg.label ?? 'Maneuver');
+    }
+    // 'hb' frames need no handling beyond the liveness stamp above.
   };
 
   // Setup battery state
@@ -134,6 +214,15 @@ export const TestVehicleScreen: React.FC<TestVehicleScreenProps> = ({ onBack }) 
         pcRef.current = pc;
 
         stream.getTracks().forEach(track => pc.addTrack(track, stream));
+
+        // Primary command path (Plan v2): the vehicle opens a DataChannel that
+        // carries drive frames, heartbeats, E-STOP and maneuver decisions; the
+        // Firestore documents remain the cloud mirror/backup path.
+        const dc = pc.createDataChannel('control', { ordered: true });
+        dcRef.current = dc;
+        dc.onopen = () => setCmdPath('p2p');
+        dc.onclose = () => setCmdPath('cloud');
+        dc.onmessage = (e) => handleControlFrame(String(e.data));
 
         // 3. Setup geolocation tracking (Alt-Wiedikon standard simulated walk)
         let lastLat = 47.3712;
@@ -254,39 +343,21 @@ export const TestVehicleScreen: React.FC<TestVehicleScreenProps> = ({ onBack }) 
         setLinkLost(false);
       }
 
-      // Act on a new operator command. We key off a monotonic sequence number
-      // (operatorCommandSeq) instead of comparing wall-clock timestamps across
-      // two devices, which clock skew would otherwise break. Falls back to the
-      // timestamp only for legacy writes that predate the sequence field.
+      // Act on a new operator command (cloud mirror path). Keyed off a
+      // monotonic sequence number instead of wall-clock timestamps, which
+      // clock skew across devices would break; the same counter deduplicates
+      // against commands already delivered on the DataChannel.
       if (data.operatorCommand) {
         const seq = typeof data.operatorCommandSeq === 'number' ? data.operatorCommandSeq : null;
-        const cmdTime = data.operatorCommandTimestamp ?? 0;
-        const isNew = seq !== null
-          ? seq > lastCommandSeqRef.current
-          : cmdTime !== lastCommandTimestampRef.current;
+        applyOperatorCommand(data.operatorCommand, seq, data.operatorCommandTimestamp ?? 0);
+      }
 
-        if (isNew) {
-          if (seq !== null) lastCommandSeqRef.current = seq;
-          lastCommandTimestampRef.current = cmdTime;
-          setOperatorCommand(data.operatorCommand);
-          setShowCommandOverlay(true);
-
-          if (data.operatorCommand === 'TAKE_OVER') {
-            setAvState('MANUAL');
-            lastHeartbeatRef.current = Date.now(); // grace period for first heartbeat
-            playBeep('alert');
-          } else {
-            playBeep('success');
-            if (data.operatorCommand === 'PROCEED') {
-              setAvState('AUTONOMOUS');
-            }
-          }
-
-          // Automatically auto-clear flash overlay after 3 seconds
-          setTimeout(() => {
-            setShowCommandOverlay(false);
-          }, 3000);
-        }
+      // Mode 1: the operator's verdict on our proposed maneuver (cloud path).
+      // Ignore decisions older than 15 s so a stale verdict left in the doc
+      // from a previous run doesn't replay an overlay on mount.
+      const mp = data.maneuverProposal as ManeuverProposal | undefined;
+      if (mp && mp.status !== 'pending' && mp.decidedAt && Date.now() - mp.decidedAt < 15000) {
+        applyManeuverDecision(mp.id, mp.status, mp.label);
       }
     });
 
@@ -332,20 +403,31 @@ export const TestVehicleScreen: React.FC<TestVehicleScreenProps> = ({ onBack }) 
     };
   }, [vehicleId]);
 
-  // Deadman watchdog: while under MANUAL teleop control, if the operator's
-  // heartbeat goes stale (link loss), zero the controls and revert to a safe
-  // stop instead of holding the last throttle command indefinitely.
+  // Graded deadman watchdog (Plan v2): heartbeat loss escalates in stages
+  // instead of tripping a binary safe stop — first a speed cap, then a
+  // controlled slowdown, and only after sustained loss a latched MRM. The
+  // logic runs entirely on the vehicle, so it works with zero connectivity.
   useEffect(() => {
     if (!vehicleId) return;
 
     const watchdog = setInterval(() => {
-      if (avStateRef.current !== 'MANUAL') return;
+      if (avStateRef.current !== 'MANUAL' || lastHeartbeatRef.current <= 0) {
+        failsafePrevRef.current = 'NOMINAL';
+        setFailsafe('NOMINAL');
+        return;
+      }
       const sinceHeartbeat = Date.now() - lastHeartbeatRef.current;
-      if (lastHeartbeatRef.current > 0 && sinceHeartbeat > DEADMAN_TIMEOUT_MS) {
+      const stage = failsafeStage(sinceHeartbeat);
+      setFailsafe(stage);
+
+      if (stage !== 'NOMINAL') {
+        setThrottle((t) => applyFailsafeThrottle(t, stage));
+      }
+      if (stage === 'SAFE_STOP' && failsafePrevRef.current !== 'SAFE_STOP') {
         setLinkLost(true);
         setThrottle(0);
         setSteeringAngle(0);
-        setAvState('MRM'); // minimal-risk maneuver (safe stop)
+        setAvState('MRM'); // minimal-risk maneuver (safe stop, latched)
         playBeep('alert');
         updateDoc(doc(db, 'test_vehicles', vehicleId), {
           throttle: 0,
@@ -354,6 +436,7 @@ export const TestVehicleScreen: React.FC<TestVehicleScreenProps> = ({ onBack }) 
           updatedAt: Date.now(),
         }).catch(() => {});
       }
+      failsafePrevRef.current = stage;
     }, 500);
 
     return () => clearInterval(watchdog);
@@ -397,6 +480,26 @@ export const TestVehicleScreen: React.FC<TestVehicleScreenProps> = ({ onBack }) 
       operatorCommand: null,
       updatedAt: Date.now()
     }).catch(err => console.error(err));
+  };
+
+  // Mode 1 supervision: propose a maneuver for the remote operator to confirm
+  // or reject. The vehicle keeps holding until a verdict arrives (OAD model:
+  // the operator reviews and confirms maneuvers proposed by the vehicle).
+  const handleProposeManeuver = async (kind: ManeuverKind) => {
+    if (!vehicleId) return;
+    setShowManeuverDropdown(false);
+    const proposal: ManeuverProposal = {
+      id: `m_${Date.now()}`,
+      kind,
+      label: MANEUVER_CATALOG[kind],
+      proposedAt: Date.now(),
+      status: 'pending',
+    };
+    setPendingProposal(proposal);
+    await setDoc(doc(db, 'test_vehicles', vehicleId), {
+      maneuverProposal: proposal,
+      updatedAt: Date.now()
+    }, { merge: true }).catch(err => console.error(err));
   };
 
   const handleManualEngage = async () => {
@@ -498,12 +601,49 @@ export const TestVehicleScreen: React.FC<TestVehicleScreenProps> = ({ onBack }) 
         </div>
       )}
 
-      {/* Deadman / link-loss safety banner */}
+      {/* Mode 1: operator verdict flash overlay */}
+      {proposalDecision && (
+        <div className={`fixed inset-0 backdrop-blur-md z-[60] flex flex-col justify-center items-center animate-fade-in text-center p-8 ${
+          proposalDecision.decision === 'confirmed' ? 'bg-joppli-green/85' : 'bg-joppli-red/85'
+        }`}>
+          {proposalDecision.decision === 'confirmed'
+            ? <Check className="w-24 h-24 text-white mb-6" />
+            : <AlertOctagon className="w-24 h-24 text-white mb-6" />}
+          <span className="text-xl text-white/80 font-bold mb-2">OPERATOR VERDICT — MODE 1:</span>
+          <span className="text-4xl md:text-5xl font-black text-white tracking-widest bg-black/35 px-8 py-4 rounded-3xl">
+            {proposalDecision.decision === 'confirmed' ? 'MANEUVER APPROVED' : 'MANEUVER REJECTED'}
+          </span>
+          <span className="text-xs text-white/70 mt-6 normal-case tracking-normal">{proposalDecision.label}</span>
+          <span className="text-xs text-white/50 mt-2">
+            {proposalDecision.decision === 'confirmed' ? 'EXECUTING MANEUVER...' : 'HOLDING POSITION — AWAITING NEW PLAN'}
+          </span>
+        </div>
+      )}
+
+      {/* Graded failsafe banners (Plan v2): escalate before the hard safe stop */}
+      {!linkLost && failsafe === 'SPEED_CAP' && (
+        <div className="fixed top-0 inset-x-0 z-[70] bg-joppli-yellow text-joppli-dark px-6 py-2 flex items-center justify-center gap-3 shadow-lg">
+          <AlertOctagon className="w-4 h-4" />
+          <span className="text-xs font-black tracking-widest">
+            LINK DEGRADED — FAILSAFE STAGE 1: SPEED CAPPED AT 50%
+          </span>
+        </div>
+      )}
+      {!linkLost && failsafe === 'SLOWDOWN' && (
+        <div className="fixed top-0 inset-x-0 z-[70] bg-[#e07b1f] text-white px-6 py-2 flex items-center justify-center gap-3 shadow-lg animate-pulse">
+          <AlertOctagon className="w-4 h-4" />
+          <span className="text-xs font-black tracking-widest">
+            SUSTAINED LINK LOSS — FAILSAFE STAGE 2: CONTROLLED SLOWDOWN
+          </span>
+        </div>
+      )}
+
+      {/* Deadman / link-loss safety banner (failsafe stage 3, latched) */}
       {linkLost && (
         <div className="fixed top-0 inset-x-0 z-[70] bg-joppli-red text-white px-6 py-2 flex items-center justify-center gap-3 shadow-lg animate-pulse">
           <AlertOctagon className="w-4 h-4" />
           <span className="text-xs font-black tracking-widest">
-            OPERATOR LINK LOST — SAFE STOP ENGAGED (MRM)
+            OPERATOR LINK LOST — FAILSAFE STAGE 3: SAFE STOP ENGAGED (MRM)
           </span>
         </div>
       )}
@@ -516,6 +656,11 @@ export const TestVehicleScreen: React.FC<TestVehicleScreenProps> = ({ onBack }) 
           </span>
           <div className="h-6 w-px bg-white/20"></div>
           <span className="text-[10px] text-white/50 font-bold">Simulator Active</span>
+          <div className="h-6 w-px bg-white/20"></div>
+          {/* Dual-path command channel indicator: P2P DataChannel vs cloud mirror */}
+          <span className={`text-[10px] font-black tracking-widest ${cmdPath === 'p2p' ? 'text-joppli-green' : 'text-joppli-yellow'}`}>
+            CMD: {cmdPath === 'p2p' ? 'P2P DIRECT' : 'CLOUD RELAY'}
+          </span>
         </div>
 
         {/* Big AV State Badge */}
@@ -621,9 +766,51 @@ export const TestVehicleScreen: React.FC<TestVehicleScreenProps> = ({ onBack }) 
         </div>
       </div>
 
-      {/* Grid Action Selector Buttons (Four Big Buttons at Bottom) */}
+      {/* Mode 1: outstanding maneuver proposal — awaiting operator verdict */}
+      {pendingProposal && (
+        <div className="bg-joppli-blue/15 border-t border-joppli-blue/40 px-6 py-2 flex items-center justify-center gap-3 z-20">
+          <CornerRightUp className="w-4 h-4 text-joppli-blue shrink-0" />
+          <span className="text-[10px] font-black tracking-widest text-joppli-blue">
+            MANEUVER PROPOSED — AWAITING OPERATOR CONFIRMATION:
+          </span>
+          <span className="text-[10px] font-bold text-white/80 normal-case tracking-normal">{pendingProposal.label}</span>
+          <span className="w-2 h-2 rounded-full bg-joppli-blue animate-ping"></span>
+        </div>
+      )}
+
+      {/* Grid Action Selector Buttons (Bottom Row) */}
       <div className="bg-[#14151b] border-t border-white/10 p-6 flex flex-col md:flex-row gap-4 shrink-0 z-20">
-        
+
+        {/* BUTTON 0: PROPOSE MANEUVER (Mode 1 supervision) with maneuver selector */}
+        <div className="relative flex-1">
+          <button
+            onClick={() => setShowManeuverDropdown(!showManeuverDropdown)}
+            disabled={!!pendingProposal}
+            className={`w-full py-4 px-4 rounded-xl font-bold text-xs uppercase tracking-widest flex items-center justify-between gap-2 shadow-lg transition-all ${
+              pendingProposal
+                ? 'bg-joppli-blue/30 text-white/50 cursor-not-allowed'
+                : 'bg-joppli-blue hover:bg-joppli-blue/85 text-white'
+            }`}
+          >
+            <span>Propose Maneuver</span>
+            <ChevronDown className="w-4 h-4 shrink-0" />
+          </button>
+
+          {showManeuverDropdown && (
+            <div className="absolute bottom-20 left-0 w-full bg-[#1c1d26] border border-white/10 rounded-xl shadow-2xl z-30 overflow-hidden flex flex-col animate-fade-in">
+              {(Object.entries(MANEUVER_CATALOG) as [ManeuverKind, string][]).map(([kind, label]) => (
+                <button
+                  key={kind}
+                  onClick={() => handleProposeManeuver(kind)}
+                  className="w-full text-left py-3.5 px-4 text-xs font-bold hover:bg-white/5 border-b border-white/5 text-white/80 hover:text-white transition-colors"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* BUTTON 1: REQUEST ASSISTANCE with Dropdown cause selector */}
         <div className="relative flex-1">
           <button

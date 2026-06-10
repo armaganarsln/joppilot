@@ -73,6 +73,14 @@ service cloud.firestore {
       allow read, write: if isValidId(vehicleId);
     }
 
+    // Teleoperation session audit log (Plan v2 session recording, prototype
+    // scale: append-only event list per session). Open for the testbed like
+    // the other teleop collections (RD-1); the production equivalent is KVS
+    // session recording plus S3 Object Lock (WORM).
+    match /teleop_sessions/{sessionId} {
+      allow read, write: if isValidId(sessionId);
+    }
+
     // Operator Profile Collection.
     // role/status are authorization-bearing fields. A regular user may only ever
     // create/keep themselves as a pending 'operator'; elevation to admin or to

@@ -718,7 +718,7 @@ export default function App() {
           )}
 
           {activeTab === 'dashboard' && (
-             <DashboardView currentUserProfile={effectiveProfile} />
+             <DashboardView currentUserProfile={effectiveProfile} vehicles={vehicles} />
           )}
 
           {activeTab === 'assistance' && (
