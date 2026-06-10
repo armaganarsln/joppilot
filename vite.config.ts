@@ -17,6 +17,10 @@ export default defineConfig(() => {
       hmr: process.env.DISABLE_HMR !== 'true',
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      // Allow access via Cloudflare quick tunnels (for cross-network teleop
+      // testing from a phone). The leading dot allows any *.trycloudflare.com
+      // subdomain, so it survives tunnel restarts. localhost is always allowed.
+      allowedHosts: ['.trycloudflare.com'],
     },
   };
 });
